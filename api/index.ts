@@ -1,5 +1,5 @@
-import app from './app';
-import logger from './utils/logger';
+import app from '../src/app';
+import logger from '../src/utils/logger';
 
 const PORT = process.env.PORT || 3001;
 
@@ -15,7 +15,9 @@ try {
 app.listen(PORT, () => {
   logger.info(`DUPR Service is running on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`API Documentation available at http://localhost:${PORT}/api/dupr`);
+  logger.info(
+    `API Documentation available at http://localhost:${PORT}/api/dupr`
+  );
 });
 
 // Graceful shutdown

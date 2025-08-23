@@ -13,7 +13,7 @@
     "coverage/**/*",
     ".nyc_output/**/*"
   ],
-  "exec": "ts-node src/index.ts",
+  "exec": "ts-node api/index.ts",
   "env": {
     "NODE_ENV": "development"
   },
