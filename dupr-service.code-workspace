@@ -1,0 +1,120 @@
+{
+  "folders": [
+    {
+      "name": "DUPR Service",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "typescript.preferences.importModuleSpecifier": "relative",
+    "typescript.suggest.autoImports": true,
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit",
+      "source.fixAll.eslint": "explicit"
+    },
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "eslint.workingDirectories": ["./"],
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/logs": true,
+      "**/.nyc_output": true,
+      "**/coverage": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/logs": true,
+      "**/.nyc_output": true,
+      "**/coverage": true
+    },
+    "debug.console.fontSize": 14,
+    "debug.inlineValues": "on",
+    "debug.showBreakpointsInOverviewRuler": true,
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.cwd": "${workspaceFolder}",
+    "npm.enableScriptExplorer": true,
+    "typescript.preferences.quoteStyle": "single"
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-vscode.vscode-typescript-next",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "ms-vscode.vscode-json",
+      "christian-kohler.path-intellisense",
+      "ms-vscode.vscode-npm-script",
+      "streetsidesoftware.code-spell-checker",
+      "usernamehw.errorlens",
+      "ms-vscode.vscode-thunder-client",
+      "humao.rest-client",
+      "42crunch.vscode-openapi",
+      "redhat.vscode-yaml"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "🚀 Debug DUPR Service",
+        "type": "node",
+        "request": "launch",
+        "program": "${workspaceFolder}/src/index.ts",
+        "env": {
+          "NODE_ENV": "development"
+        },
+        "runtimeArgs": [
+          "-r",
+          "ts-node/register"
+        ],
+        "sourceMaps": true,
+        "restart": true,
+        "protocol": "inspector",
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen",
+        "envFile": "${workspaceFolder}/.env"
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "🚀 Start DUPR Service (Dev)",
+        "type": "npm",
+        "script": "dev",
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        },
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "panel": "shared"
+        },
+        "problemMatcher": ["$tsc-watch"]
+      },
+      {
+        "label": "🧪 Run Tests",
+        "type": "npm",
+        "script": "test",
+        "group": "test",
+        "presentation": {
+          "echo": true,
+          "reveal": "always",
+          "panel": "shared"
+        }
+      },
+      {
+        "label": "📚 Open API Documentation",
+        "type": "shell",
+        "command": "open",
+        "args": ["http://localhost:3001/docs"],
+        "group": "build",
+        "dependsOn": "🚀 Start DUPR Service (Dev)"
+      }
+    ]
+  }
+}

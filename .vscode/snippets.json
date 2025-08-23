@@ -1,0 +1,122 @@
+{
+  "DUPR Service Controller Method": {
+    "prefix": "dupr-controller",
+    "body": [
+      "async ${1:methodName}(req: Request, res: Response): Promise<void> {",
+      "  try {",
+      "    const ${2:data} = validateRequest(${3:schema}, req.${4:body});",
+      "",
+      "    const result = await ${5:service}.${1:methodName}(${2:data});",
+      "",
+      "    const response: ApiResponse<typeof result> = {",
+      "      success: true,",
+      "      data: result,",
+      "      message: '${6:Operation completed successfully}'",
+      "    };",
+      "",
+      "    res.status(200).json(response);",
+      "  } catch (error: any) {",
+      "    logger.error('${1:methodName} controller error', error);",
+      "    ",
+      "    const response: ApiResponse<null> = {",
+      "      success: false,",
+      "      error: error.message || 'Internal server error',",
+      "      message: '${7:Operation failed}'",
+      "    };",
+      "",
+      "    res.status(${8:400}).json(response);",
+      "  }",
+      "}"
+    ],
+    "description": "Creates a new DUPR service controller method with error handling"
+  },
+  "DUPR Service Method": {
+    "prefix": "dupr-service",
+    "body": [
+      "async ${1:methodName}(${2:params}): Promise<${3:ReturnType}> {",
+      "  try {",
+      "    logger.info('${1:methodName} called with params:', ${2:params});",
+      "",
+      "    const response = await duprAuthService.makeAuthenticatedRequest(",
+      "      '/${4:endpoint}',",
+      "      '${5|GET,POST,PUT,DELETE|}'${6:, data}",
+      "    );",
+      "",
+      "    if (response.status === 200 && response.data) {",
+      "      const ${7:result} = ${8:this.transformResponse(response.data)};",
+      "      ",
+      "      logger.info('${1:methodName} completed successfully');",
+      "      return ${7:result};",
+      "    }",
+      "",
+      "    return null;",
+      "  } catch (error: any) {",
+      "    logger.error('${1:methodName} failed:', error);",
+      "    ",
+      "    if (error.response?.status === 404) {",
+      "      return null;",
+      "    }",
+      "",
+      "    throw new Error('${9:Operation failed}');",
+      "  }",
+      "}"
+    ],
+    "description": "Creates a new DUPR service method with authentication and error handling"
+  },
+  "DUPR API Test": {
+    "prefix": "dupr-test",
+    "body": [
+      "describe('${1:TestSuite}', () => {",
+      "  beforeAll(async () => {",
+      "    // Setup test environment",
+      "  });",
+      "",
+      "  afterAll(async () => {",
+      "    // Cleanup test environment",
+      "  });",
+      "",
+      "  test('should ${2:testDescription}', async () => {",
+      "    // Arrange",
+      "    const ${3:testData} = {",
+      "      ${4:key}: '${5:value}'",
+      "    };",
+      "",
+      "    // Act",
+      "    const result = await ${6:serviceMethod}(${3:testData});",
+      "",
+      "    // Assert",
+      "    expect(result).toBeDefined();",
+      "    expect(result.${7:property}).toBe(${8:expectedValue});",
+      "  });",
+      "",
+      "  test('should handle errors gracefully', async () => {",
+      "    // Arrange",
+      "    const invalidData = {};",
+      "",
+      "    // Act & Assert",
+      "    await expect(${6:serviceMethod}(invalidData))",
+      "      .rejects.toThrow('${9:Expected error message}');",
+      "  });",
+      "});"
+    ],
+    "description": "Creates a new DUPR service test suite"
+  },
+  "DUPR Validation Schema": {
+    "prefix": "dupr-validation",
+    "body": [
+      "export const ${1:schemaName} = Joi.object({",
+      "  ${2:fieldName}: Joi.${3|string,number,boolean,array,object|}()${4:.required()}${5:.min(1).max(100)}",
+      "    .description('${6:Field description}'),",
+      "  $0",
+      "});"
+    ],
+    "description": "Creates a new Joi validation schema"
+  },
+  "DUPR Logger": {
+    "prefix": "dupr-log",
+    "body": [
+      "logger.${1|info,warn,error,debug|}('${2:log message}', ${3:data});"
+    ],
+    "description": "Creates a logger statement"
+  }
+}
