@@ -70,7 +70,6 @@ class DuprAuthService {
       };
 
       logger.info('DUPR authentication token obtained successfully');
-      console.log(this.token);
       return this.token!.result.token;
     } catch (error) {
       logger.error('Failed to obtain DUPR auth token', error);

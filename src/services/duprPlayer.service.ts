@@ -25,7 +25,6 @@ class DuprPlayerService {
 
       if (response.status === 200 && response.data.result) {
         const playerData = response.data.result;
-        console.log(JSON.stringify(playerData));
         const player: DuprPlayer = {
           id: playerData.id || playerData.duprId,
           firstName: playerData.firstName || playerData.first_name,
@@ -143,7 +142,6 @@ class DuprPlayerService {
         'POST',
         { email: email }
       );
-      console.log(response, response);
       if (response.status === 200 && response.data) {
         return response.data || null;
       }
