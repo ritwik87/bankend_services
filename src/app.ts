@@ -48,8 +48,8 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     documentation: {
-      swagger: `${req.protocol}://${req.get('host')}/docs`,
-      openapi: `${req.protocol}://${req.get('host')}/docs/json`,
+      swagger: `${req.protocol}://${req.get('host')}/api/docs`,
+      openapi: `${req.protocol}://${req.get('host')}/api/docs/json`,
     },
   });
 });
