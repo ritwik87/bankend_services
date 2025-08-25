@@ -55,7 +55,7 @@ app.get('/', (req, res) => {
 });
 
 // Swagger documentation
-app.use('/docs', swaggerRoutes);
+app.use('/api/docs', swaggerRoutes);
 
 // API routes
 app.use('/api', routes);
