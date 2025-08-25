@@ -4,17 +4,18 @@ import { specs } from './swagger.config';
 
 const router = Router();
 
-// Swagger UI setup
+// Load assets from CDN instead of local files
 const swaggerUiOptions = {
-  customCss: `
-    .swagger-ui .topbar { display: none }
-    .swagger-ui .info { margin: 50px 0 }
-    .swagger-ui .info .title { color: #16a34a }
-  `,
+  customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui.css',
+  customJs: [
+    'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui-bundle.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui-standalone-preset.js'
+  ],
   customSiteTitle: 'DUPR Service API Documentation',
   customfavIcon: '/favicon.ico'
 };
 
+// Serve Swagger UI using CDN assets
 router.use('/', swaggerUi.serve);
 router.get('/', swaggerUi.setup(specs, swaggerUiOptions));
 
