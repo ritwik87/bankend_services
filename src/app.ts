@@ -2,12 +2,12 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import express from 'express';
 import cors from 'cors';
+import express from 'express';
 import helmet from 'helmet';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import routes from './routes';
 import swaggerRoutes from './swagger/swagger.routes';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import logger from './utils/logger';
 
 const app = express();
@@ -15,15 +15,13 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// CORS configuration
+// CORS configuration - Development mode (allow all localhost origins)
 const corsOptions = {
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || [
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ],
+  origin: true, // Allow all origins in development
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
@@ -37,7 +35,7 @@ app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path}`, {
     body: req.method !== 'GET' ? req.body : undefined,
     query: req.query,
-    ip: req.ip
+    ip: req.ip,
   });
   next();
 });
@@ -51,8 +49,8 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     documentation: {
       swagger: `${req.protocol}://${req.get('host')}/docs`,
-      openapi: `${req.protocol}://${req.get('host')}/docs/json`
-    }
+      openapi: `${req.protocol}://${req.get('host')}/docs/json`,
+    },
   });
 });
 
