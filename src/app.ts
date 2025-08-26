@@ -44,18 +44,18 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'DUPR Service API is running',
+    message: 'Backend Service API is running',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     documentation: {
-      swagger: `${req.protocol}://${req.get('host')}/docs`,
-      openapi: `${req.protocol}://${req.get('host')}/docs/json`,
+      swagger: `${req.protocol}://${req.get('host')}/api/docs`,
+      openapi: `${req.protocol}://${req.get('host')}/api/docs/json`,
     },
   });
 });
 
 // Swagger documentation
-app.use('/docs', swaggerRoutes);
+app.use('/api/docs', swaggerRoutes);
 
 // API routes
 app.use('/api', routes);
