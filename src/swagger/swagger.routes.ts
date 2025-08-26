@@ -1,22 +1,22 @@
 import { Router } from 'express';
-import swaggerUi from 'swagger-ui-express';
 import { specs } from './swagger.config';
 
 const router = Router();
 
-// Swagger UI setup
+// Load assets from CDN instead of local files
 const swaggerUiOptions = {
-  customCss: `
-    .swagger-ui .topbar { display: none }
-    .swagger-ui .info { margin: 50px 0 }
-    .swagger-ui .info .title { color: #16a34a }
-  `,
-  customSiteTitle: 'DUPR Service API Documentation',
+  customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui.css',
+  customJs: [
+    'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui-bundle.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.10.5/swagger-ui-standalone-preset.js'
+  ],
+  customSiteTitle: 'Backend Service API Documentation',
   customfavIcon: '/favicon.ico'
 };
 
-router.use('/', swaggerUi.serve);
-router.get('/', swaggerUi.setup(specs, swaggerUiOptions));
+// Serve Swagger UI using CDN assets
+// router.use('/', swaggerUi.serve);
+// router.get('/', swaggerUi.setup(specs, swaggerUiOptions));
 
 // JSON endpoint for OpenAPI spec
 router.get('/json', (req, res) => {
