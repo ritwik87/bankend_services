@@ -36,14 +36,20 @@ export class PaymentService {
         return null;
       }
 
-      if (!data?.razorpay_key || !data?.razorpay_secret) {
-        logger.error(`No Razorpay credentials found for ${context.type} ${context.id}`);
+      // Use custom credentials if available, otherwise fall back to default environment variables
+      const razorpayKey = data?.razorpay_key || process.env.RAZORPAY_KEY;
+      const razorpaySecret = data?.razorpay_secret || process.env.RAZORPAY_SECRET;
+
+      if (!razorpayKey || !razorpaySecret) {
+        logger.error(`No Razorpay credentials found for ${context.type} ${context.id} and no default credentials available`);
         return null;
       }
 
+      logger.info(`Using ${data?.razorpay_key ? 'custom' : 'default'} Razorpay credentials for ${context.type} ${context.id}`);
+
       return {
-        key: data.razorpay_key,
-        secret: data.razorpay_secret,
+        key: razorpayKey,
+        secret: razorpaySecret,
       };
     } catch (error) {
       logger.error('Error fetching credentials:', error);
