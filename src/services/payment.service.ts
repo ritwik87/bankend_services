@@ -1,13 +1,15 @@
-import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
-import logger from '../utils/logger';
+import crypto from 'crypto';
 import {
   CreateOrderRequest,
   CreateOrderResponse,
+  CreatePaymentLinkRequest,
+  CreatePaymentLinkResponse,
+  RazorpayCredentials,
   VerifyPaymentRequest,
   VerifyPaymentResponse,
-  RazorpayCredentials,
 } from '../types/payment.types';
+import logger from '../utils/logger';
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -19,12 +21,14 @@ export class PaymentService {
   /**
    * Fetch Razorpay credentials from database using context
    */
-  private async fetchCredentials(
-    context: { type: 'tournament' | 'league'; id: string }
-  ): Promise<RazorpayCredentials | null> {
+  private async fetchCredentials(context: {
+    type: 'tournament' | 'league';
+    id: string;
+  }): Promise<(RazorpayCredentials & { isDefault: boolean }) | null> {
     try {
-      const tableName = context.type === 'tournament' ? 'tournaments' : 'leagues';
-      
+      const tableName =
+        context.type === 'tournament' ? 'tournaments' : 'leagues';
+
       const { data, error } = await supabase
         .from(tableName)
         .select('razorpay_key, razorpay_secret')
@@ -38,18 +42,27 @@ export class PaymentService {
 
       // Use custom credentials if available, otherwise fall back to default environment variables
       const razorpayKey = data?.razorpay_key || process.env.RAZORPAY_KEY;
-      const razorpaySecret = data?.razorpay_secret || process.env.RAZORPAY_SECRET;
+      const razorpaySecret =
+        data?.razorpay_secret || process.env.RAZORPAY_SECRET;
+      const isDefault = !data?.razorpay_key; // True if using default credentials
 
       if (!razorpayKey || !razorpaySecret) {
-        logger.error(`No Razorpay credentials found for ${context.type} ${context.id} and no default credentials available`);
+        logger.error(
+          `No Razorpay credentials found for ${context.type} ${context.id} and no default credentials available`
+        );
         return null;
       }
 
-      logger.info(`Using ${data?.razorpay_key ? 'custom' : 'default'} Razorpay credentials for ${context.type} ${context.id}`);
+      logger.info(
+        `Using ${isDefault ? 'default' : 'custom'} Razorpay credentials for ${
+          context.type
+        } ${context.id}`
+      );
 
       return {
         key: razorpayKey,
         secret: razorpaySecret,
+        isDefault,
       };
     } catch (error) {
       logger.error('Error fetching credentials:', error);
@@ -68,7 +81,7 @@ export class PaymentService {
 
       // Fetch credentials from database using context
       const credentials = await this.fetchCredentials(context);
-      
+
       if (!credentials) {
         return {
           success: false,
@@ -77,9 +90,9 @@ export class PaymentService {
       }
 
       // Create authorization header with fetched credentials
-      const auth = Buffer.from(`${credentials.key}:${credentials.secret}`).toString(
-        'base64'
-      );
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
 
       const response = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
@@ -148,7 +161,7 @@ export class PaymentService {
 
       // Fetch credentials from database using context
       const credentials = await this.fetchCredentials(context);
-      
+
       if (!credentials) {
         return {
           success: false,
@@ -239,6 +252,82 @@ export class PaymentService {
     } catch (error) {
       logger.error('Error fetching payment details:', error);
       return null;
+    }
+  }
+
+  /**
+   * Create a Razorpay payment link (only for default payment type)
+   */
+  async createPaymentLink(
+    paymentLinkData: CreatePaymentLinkRequest
+  ): Promise<CreatePaymentLinkResponse> {
+    try {
+      const { context, ...linkParams } = paymentLinkData;
+
+      // Fetch credentials from database using context
+      const credentials = await this.fetchCredentials(context);
+
+      if (!credentials) {
+        return {
+          success: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
+      }
+
+      // Only create payment links for default payment type
+      if (!credentials.isDefault) {
+        return {
+          success: false,
+          error:
+            'Payment links are only supported with default Razorpay configuration',
+        };
+      }
+
+      // Create authorization header with default credentials
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      const response = await fetch(
+        'https://api.razorpay.com/v1/payment_links',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(linkParams),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData: any = await response.json();
+        logger.error('Failed to create Razorpay payment link:', errorData);
+        return {
+          success: false,
+          error:
+            errorData.error?.description || 'Failed to create payment link',
+        };
+      }
+
+      const paymentLink: any = await response.json();
+
+      logger.info('Razorpay payment link created successfully:', {
+        linkId: paymentLink.id,
+        shortUrl: paymentLink.short_url,
+      });
+
+      return {
+        success: true,
+        paymentLink,
+      };
+    } catch (error) {
+      logger.error('Error creating Razorpay payment link:', error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
     }
   }
 

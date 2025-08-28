@@ -14,6 +14,44 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Dummy users for testing with static OTPs
+const DUMMY_USERS = {
+  '9999999991': {
+    phone: '9999999991',
+    otp: '999999',
+    role: 'player',
+    name: 'Dummy Player',
+    email: 'dummy.player@yopmail.com',
+    password: '9999999991',
+  },
+  '9999999992': {
+    phone: '9999999992',
+    otp: '999999',
+    role: 'organizer',
+    name: 'Dummy Organizer',
+    email: 'dummy.organizer@yopmail.com',
+    password: '9999999992',
+  },
+  '9999999993': {
+    phone: '9999999993',
+    otp: '999999',
+    role: 'admin',
+    name: 'Dummy Admin',
+    email: 'dummy.admin@yopmail.com',
+    password: '9999999993',
+  },
+};
+
+// Helper function to check if phone is a dummy user
+const isDummyUser = (phone: string): boolean => {
+  return Object.prototype.hasOwnProperty.call(DUMMY_USERS, phone);
+};
+
+// Helper function to get dummy user data
+const getDummyUser = (phone: string) => {
+  return DUMMY_USERS[phone as keyof typeof DUMMY_USERS] || null;
+};
+
 class OtpService {
   /**
    * Generate and send OTP via WhatsApp
@@ -22,12 +60,24 @@ class OtpService {
     try {
       const { phone } = request;
 
-      // Generate 6-digit OTP
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      // Check if this is a dummy user
+      const dummyUser = getDummyUser(phone);
+      let otp: string;
+      let shouldSendOtp = true;
+
+      if (dummyUser) {
+        // Use static OTP for dummy users
+        otp = dummyUser.otp;
+        shouldSendOtp = false;
+        logger.info(`Using static OTP for dummy user: ${phone}`);
+      } else {
+        // Generate 6-digit OTP for real users
+        otp = Math.floor(100000 + Math.random() * 900000).toString();
+      }
 
       // Set expiry time (5 minutes from now)
       const expiryTime = new Date();
-      expiryTime.setMinutes(expiryTime.getMinutes() + 5);
+      expiryTime.setMinutes(expiryTime.getMinutes() + 1);
 
       // Check if user exists in profiles table
       const { data: existingProfile } = await supabase
@@ -46,80 +96,149 @@ class OtpService {
           )}`
         );
       } else {
-        // For new users, we need to create auth user first due to foreign key constraint
-        logger.info(
-          `New user detected for phone: ${phone.replace(
-            /(.{3})(.*)(.{2})/,
-            '$1***$3'
-          )}`
-        );
+        // Check if this is a dummy user that needs to be created
+        if (dummyUser) {
+          logger.info(`Creating dummy user for phone: ${phone}`);
+          try {
+            // Create auth user first (required for foreign key constraint)
+            const { data: authUser, error: authError } =
+              await supabase.auth.admin.createUser({
+                phone: `+91${phone}`,
+                email: dummyUser.email,
+                password: dummyUser.password,
+                user_metadata: {
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  password: dummyUser.password,
+                },
+                email_confirm: true, // Auto-confirm for dummy users
+              });
 
-        try {
-          // Create auth user first (required for foreign key constraint)
-          const { data: authUser, error: authError } =
-            await supabase.auth.admin.createUser({
-              phone: `+91${phone}`,
-              email: `${phone}@yopmail.com`,
-              password: `${phone}`,
-              user_metadata: {
-                phone: phone,
-                role: 'guest',
-                name: `User ${phone.slice(-4)}`, // Default name with last 4 digits
-                email: `${phone}@yopmail.com`, // Temporary email for guest
-                password: `${phone}`,
-              },
-              email_confirm: true, // Auto-confirm phone for OTP flow
-            });
+            if (authError) {
+              logger.error('Error creating dummy auth user:', authError);
+              return {
+                success: false,
+                message: 'Failed to create dummy user account',
+                userExists: false,
+                error: 'Failed to create dummy user account',
+              };
+            }
 
-          if (authError) {
-            logger.error('Error creating auth user:', authError);
+            userId = authUser.user.id;
+
+            // Create dummy user profile
+            // const { error: profileError } = await supabase
+            //   .from('profiles')
+            //   .insert([
+            //     {
+            //       id: userId,
+            //       name: dummyUser.name,
+            //       email: dummyUser.email,
+            //       phone: dummyUser.phone,
+            //       role: dummyUser.role,
+            //     },
+            //   ]);
+
+            // if (profileError) {
+            //   logger.error('Error creating dummy profile:', profileError);
+            //   // If profile creation fails, clean up the auth user
+            //   await supabase.auth.admin.deleteUser(userId);
+            //   return {
+            //     success: false,
+            //     message: 'Failed to create dummy user profile',
+            //     userExists: false,
+            //     error: 'Failed to create dummy user profile',
+            //   };
+            // }
+
+            logger.info(`Dummy user created successfully for phone: ${phone}`);
+          } catch (error) {
+            logger.error('Exception during dummy user creation:', error);
             return {
               success: false,
-              message: 'Failed to create user account',
+              message: 'Failed to create dummy user',
               userExists: false,
-              error: 'Failed to create user account',
+              error: 'Failed to create dummy user',
             };
           }
+        } else {
+          // For new regular users, we need to create auth user first due to foreign key constraint
+          logger.info(
+            `New user detected for phone: ${phone.replace(
+              /(.{3})(.*)(.{2})/,
+              '$1***$3'
+            )}`
+          );
 
-          userId = authUser.user.id;
+          try {
+            // Create auth user first (required for foreign key constraint)
+            const { data: authUser, error: authError } =
+              await supabase.auth.admin.createUser({
+                phone: `+91${phone}`,
+                email: `${phone}@yopmail.com`,
+                password: `${phone}`,
+                user_metadata: {
+                  phone: phone,
+                  role: 'player', // Default to player for partner registration
+                  name: `Player ${phone.slice(-4)}`, // Default name with last 4 digits
+                  email: `${phone}@yopmail.com`, // Temporary email
+                  password: `${phone}`,
+                },
+                email_confirm: true, // Auto-confirm phone for OTP flow
+              });
 
-          // // Now create profile with valid auth user ID
-          // const { error: profileError } = await supabase
-          //   .from('profiles')
-          //   .insert([
-          //     {
-          //       id: userId,
-          //       name: `Guest User ${phone.slice(-4)}`, // Default name with last 4 digits
-          //       email: `guest_${phone}@temp.local`, // Temporary email for guest
-          //       phone: phone,
-          //       role: 'guest',
-          //     },
-          //   ]);
+            if (authError) {
+              logger.error('Error creating auth user:', authError);
+              return {
+                success: false,
+                message: 'Failed to create user account',
+                userExists: false,
+                error: 'Failed to create user account',
+              };
+            }
 
-          // if (profileError) {
-          //   logger.error('Error creating guest profile:', profileError);
-          //   // If profile creation fails, clean up the auth user
-          //   await supabase.auth.admin.deleteUser(userId);
-          //   return {
-          //     success: false,
-          //     message: 'Failed to create user profile',
-          //     userExists: false,
-          //     error: 'Failed to create user profile',
-          //   };
-          // }
-        } catch (error) {
-          logger.error('Exception during user creation:', error);
-          return {
-            success: false,
-            message: 'Failed to create user',
-            userExists: false,
-            error: 'Failed to create user',
-          };
+            userId = authUser.user.id;
+
+            // // Now create profile with valid auth user ID
+            // const { error: profileError } = await supabase
+            //   .from('profiles')
+            //   .insert([
+            //     {
+            //       id: userId,
+            //       name: `Guest User ${phone.slice(-4)}`, // Default name with last 4 digits
+            //       email: `guest_${phone}@temp.local`, // Temporary email for guest
+            //       phone: phone,
+            //       role: 'guest',
+            //     },
+            //   ]);
+
+            // if (profileError) {
+            //   logger.error('Error creating guest profile:', profileError);
+            //   // If profile creation fails, clean up the auth user
+            //   await supabase.auth.admin.deleteUser(userId);
+            //   return {
+            //     success: false,
+            //     message: 'Failed to create user profile',
+            //     userExists: false,
+            //     error: 'Failed to create user profile',
+            //   };
+            // }
+          } catch (error) {
+            logger.error('Exception during user creation:', error);
+            return {
+              success: false,
+              message: 'Failed to create user',
+              userExists: false,
+              error: 'Failed to create user',
+            };
+          }
         }
       }
 
       // Store OTP in database
-      const { error: otpError } = await supabase.from('otps').insert([
+      const { error: otpError } = await supabase.from('otps').upsert([
         {
           user_id: userId,
           phone: phone,
@@ -139,16 +258,21 @@ class OtpService {
         };
       }
 
-      // Send OTP via WhatsApp
-      const whatsappResult = await this.sendOtpViaWhatsApp(phone, otp);
+      // Send OTP via WhatsApp (skip for dummy users)
+      if (shouldSendOtp) {
+        const whatsappResult = await this.sendOtpViaWhatsApp(phone, otp);
 
-      if (!whatsappResult.success) {
-        return {
-          success: false,
-          message: whatsappResult.message || 'Failed to send OTP via WhatsApp',
-          userExists: !!existingProfile,
-          error: whatsappResult.message || 'Failed to send OTP via WhatsApp',
-        };
+        if (!whatsappResult.success) {
+          return {
+            success: false,
+            message:
+              whatsappResult.message || 'Failed to send OTP via WhatsApp',
+            userExists: !!existingProfile,
+            error: whatsappResult.message || 'Failed to send OTP via WhatsApp',
+          };
+        }
+      } else {
+        logger.info(`Skipping WhatsApp OTP for dummy user: ${phone}`);
       }
 
       logger.info(`OTP generated and sent for phone: ${phone}`);
@@ -434,6 +558,751 @@ class OtpService {
     } catch (error) {
       logger.error('Error sending OTP via WhatsApp:', error);
       return { success: false, message: 'Failed to send OTP via WhatsApp' };
+    }
+  }
+
+  /**
+   * Generate OTP specifically for partner registration (creates player role by default)
+   */
+  async generatePartnerOtp(
+    request: GenerateOtpRequest
+  ): Promise<GenerateOtpResponse> {
+    try {
+      const { phone } = request;
+
+      // Check if this is a dummy user
+      const dummyUser = getDummyUser(phone);
+      let otp: string;
+      let shouldSendOtp = true;
+
+      if (dummyUser) {
+        // Use static OTP for dummy users
+        otp = dummyUser.otp;
+        shouldSendOtp = false;
+        logger.info(`Using static OTP for dummy user partner: ${phone}`);
+      } else {
+        // Generate 6-digit OTP for real users
+        otp = Math.floor(100000 + Math.random() * 900000).toString();
+      }
+
+      // Set expiry time (5 minutes from now)
+      const expiryTime = new Date();
+      expiryTime.setMinutes(expiryTime.getMinutes() + 1);
+
+      // Check if user exists in profiles table
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id, role, name, email')
+        .eq('phone', phone)
+        .single();
+
+      let userId = null;
+      if (existingProfile) {
+        userId = existingProfile.id;
+        logger.info(
+          `Existing user found for partner phone: ${phone.replace(
+            /(.{3})(.*)(.{2})/,
+            '$1***$3'
+          )}`
+        );
+      } else {
+        // Check if this is a dummy user that needs to be created
+        if (dummyUser) {
+          logger.info(`Creating dummy user for partner phone: ${phone}`);
+          try {
+            const { data: authUser, error: authError } =
+              await supabase.auth.admin.createUser({
+                phone: `+91${phone}`,
+                email: dummyUser.email,
+                password: dummyUser.password,
+                user_metadata: {
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  password: dummyUser.password,
+                },
+                email_confirm: true,
+              });
+
+            if (authError) {
+              logger.error(
+                'Error creating dummy auth user for partner:',
+                authError
+              );
+              return {
+                success: false,
+                message: 'Failed to create dummy user account',
+                userExists: false,
+                error: 'Failed to create dummy user account',
+              };
+            }
+
+            userId = authUser.user.id;
+
+            // Create profile
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .insert([
+                {
+                  id: authUser.user.id,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                },
+              ]);
+
+            if (profileError) {
+              logger.error(
+                'Error creating dummy profile for partner:',
+                profileError
+              );
+              await supabase.auth.admin.deleteUser(authUser.user.id);
+              return {
+                success: false,
+                message: 'Failed to create dummy user profile',
+                userExists: false,
+                error: 'Failed to create dummy user profile',
+              };
+            }
+
+            logger.info(
+              `Dummy user created successfully for partner phone: ${phone}`
+            );
+          } catch (error) {
+            logger.error(
+              'Exception during dummy user creation for partner:',
+              error
+            );
+            return {
+              success: false,
+              message: 'Failed to create dummy user',
+              userExists: false,
+              error: 'Failed to create dummy user',
+            };
+          }
+        } else {
+          // For new regular users, create as player by default for partner registration
+          logger.info(
+            `New partner user detected for phone: ${phone.replace(
+              /(.{3})(.*)(.{2})/,
+              '$1***$3'
+            )}`
+          );
+
+          try {
+            const { data: authUser, error: authError } =
+              await supabase.auth.admin.createUser({
+                phone: `+91${phone}`,
+                email: `${phone}@yopmail.com`,
+                password: `${phone}`,
+                user_metadata: {
+                  phone: phone,
+                  role: 'player', // Default to player for partner registration
+                  name: `Player ${phone.slice(-4)}`,
+                  email: `${phone}@yopmail.com`,
+                  password: `${phone}`,
+                },
+                email_confirm: true,
+              });
+
+            if (authError) {
+              logger.error('Error creating auth user for partner:', authError);
+              return {
+                success: false,
+                message: 'Failed to create user account',
+                userExists: false,
+                error: 'Failed to create user account',
+              };
+            }
+
+            userId = authUser.user.id;
+
+            // Create profile
+            // const { error: profileError } = await supabase
+            //   .from('profiles')
+            //   .insert([
+            //     {
+            //       id: authUser.user.id,
+            //       name: `Player ${phone.slice(-4)}`,
+            //       email: `${phone}@yopmail.com`,
+            //       phone: phone,
+            //       role: 'player',
+            //     },
+            //   ]);
+
+            // if (profileError) {
+            //   logger.error('Error creating profile for partner:', profileError);
+            //   await supabase.auth.admin.deleteUser(authUser.user.id);
+            //   return {
+            //     success: false,
+            //     message: 'Failed to create user profile',
+            //     userExists: false,
+            //     error: 'Failed to create user profile',
+            //   };
+            // }
+          } catch (error) {
+            logger.error('Exception during partner user creation:', error);
+            return {
+              success: false,
+              message: 'Failed to create user',
+              userExists: false,
+              error: 'Failed to create user',
+            };
+          }
+        }
+      }
+
+      // Store OTP in database
+      const { error: otpError } = await supabase.from('otps').upsert([
+        {
+          user_id: userId,
+          phone: phone,
+          otp_code: otp,
+          expiry_time: expiryTime.toISOString(),
+          is_used: false,
+        },
+      ]);
+
+      if (otpError) {
+        logger.error('Error storing OTP for partner:', otpError);
+        return {
+          success: false,
+          message: 'Failed to generate OTP',
+          userExists: !!existingProfile,
+          error: 'Failed to generate OTP',
+        };
+      }
+
+      // Send OTP via WhatsApp (skip for dummy users)
+      if (shouldSendOtp) {
+        const whatsappResult = await this.sendOtpViaWhatsApp(phone, otp);
+
+        if (!whatsappResult.success) {
+          return {
+            success: false,
+            message:
+              whatsappResult.message || 'Failed to send OTP via WhatsApp',
+            userExists: !!existingProfile,
+            error: whatsappResult.message || 'Failed to send OTP via WhatsApp',
+          };
+        }
+      } else {
+        logger.info(`Skipping WhatsApp OTP for dummy partner user: ${phone}`);
+      }
+
+      logger.info(`Partner OTP generated and sent for phone: ${phone}`);
+
+      return {
+        success: true,
+        message: 'OTP sent successfully via WhatsApp',
+        userExists: !!existingProfile,
+      };
+    } catch (error) {
+      logger.error('Error in generatePartnerOtp service:', error);
+      return {
+        success: false,
+        message: 'Internal server error',
+        userExists: false,
+        error: 'Internal server error',
+      };
+    }
+  }
+
+  /**
+   * Validate partner - check if phone belongs to a registered player
+   */
+  async validatePartner(request: { phone: string }) {
+    try {
+      const { phone } = request;
+
+      // Check if this is a dummy user first
+      const dummyUser = getDummyUser(phone);
+      if (dummyUser) {
+        logger.info(`Validating dummy user partner: ${phone}`);
+
+        // For dummy users, check if they exist in database, if not create them
+        const { data: existingProfile } = await supabase
+          .from('profiles')
+          .select('id, role, name, email')
+          .eq('phone', phone)
+          .single();
+
+        if (!existingProfile) {
+          // Create dummy user automatically
+          try {
+            const { data: authUser, error: authError } =
+              await supabase.auth.admin.createUser({
+                phone: `+91${phone}`,
+                email: dummyUser.email,
+                password: dummyUser.password,
+                user_metadata: {
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  password: dummyUser.password,
+                },
+                email_confirm: true,
+              });
+
+            if (authError) {
+              logger.error(
+                'Error creating dummy auth user for partner:',
+                authError
+              );
+              return {
+                success: false,
+                userExists: false,
+                isPlayer: false,
+                error: 'Failed to create dummy user',
+              };
+            }
+
+            // Create profile
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .insert([
+                {
+                  id: authUser.user.id,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                },
+              ]);
+
+            if (profileError) {
+              logger.error(
+                'Error creating dummy profile for partner:',
+                profileError
+              );
+              await supabase.auth.admin.deleteUser(authUser.user.id);
+              return {
+                success: false,
+                userExists: false,
+                isPlayer: false,
+                error: 'Failed to create dummy user profile',
+              };
+            }
+
+            logger.info(`Created dummy user for partner validation: ${phone}`);
+          } catch (error) {
+            logger.error('Exception creating dummy user for partner:', error);
+            return {
+              success: false,
+              userExists: false,
+              isPlayer: false,
+              error: 'Failed to create dummy user',
+            };
+          }
+        }
+
+        // For dummy users, return their configured role validation
+        const isPlayer = dummyUser.role === 'player';
+        if (!isPlayer) {
+          return {
+            success: false,
+            userExists: true,
+            isPlayer: false,
+            error: 'Only registered players can be selected as partners',
+          };
+        }
+
+        return {
+          success: true,
+          userExists: true,
+          isPlayer: true,
+          user: {
+            id: existingProfile?.id || 'dummy-id',
+            role: dummyUser.role,
+            name: dummyUser.name,
+            email: dummyUser.email,
+            phone: phone,
+          },
+          error: null,
+        };
+      }
+
+      // For non-dummy users, allow them to proceed with OTP generation
+      // This creates the user flow same as main login but with player role
+      const result = await this.generatePartnerOtp({ phone });
+
+      if (!result.success) {
+        return {
+          success: false,
+          userExists: false,
+          isPlayer: false,
+          error: result.error,
+        };
+      }
+
+      // Check if user exists after OTP generation (which creates guest users)
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('id, role, name, email')
+        .eq('phone', phone)
+        .single();
+
+      if (error || !profile) {
+        // User still doesn't exist, allow them to proceed with OTP
+        return {
+          success: true,
+          userExists: false,
+          isPlayer: false,
+          error: null,
+        };
+      }
+
+      // Check if user is a registered player (not guest)
+      const isPlayer =
+        profile.role === 'player' && profile.name && profile.email;
+
+      if (!isPlayer) {
+        let errorMessage;
+        if (profile.role === 'guest') {
+          errorMessage = 'Partner needs to complete registration first';
+        } else if (profile.role !== 'player') {
+          errorMessage = 'Only registered players can be selected as partners';
+        } else {
+          errorMessage = 'Partner profile is incomplete';
+        }
+
+        return {
+          success: false,
+          userExists: true,
+          isPlayer: false,
+          error: errorMessage,
+        };
+      }
+
+      return {
+        success: true,
+        userExists: true,
+        isPlayer: true,
+        user: {
+          id: profile.id,
+          role: profile.role,
+          name: profile.name,
+          email: profile.email,
+          phone: phone,
+        },
+        error: null,
+      };
+    } catch (error) {
+      logger.error('Error in validatePartner service:', error);
+      return {
+        success: false,
+        userExists: false,
+        isPlayer: false,
+        error: 'Internal server error',
+      };
+    }
+  }
+
+  /**
+   * Verify OTP for partner without affecting main session
+   */
+  async verifyPartnerOtp(request: { phone: string; otp: string }) {
+    try {
+      const { phone, otp } = request;
+
+      // Check if this is a dummy user first
+      const dummyUser = getDummyUser(phone);
+      if (dummyUser) {
+        logger.info(`Verifying OTP for dummy user partner: ${phone}`);
+
+        // For dummy users, check if the OTP matches the static OTP
+        if (otp !== dummyUser.otp) {
+          logger.warn(`Invalid static OTP for dummy user: ${phone}`);
+          return {
+            success: false,
+            error: 'Invalid or expired OTP',
+          };
+        }
+
+        // Get or ensure dummy user profile exists
+        let { data: userProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('phone', phone)
+          .single();
+
+        if (!userProfile) {
+          // Create dummy user if doesn't exist
+          try {
+            const { data: authUser, error: authError } =
+              await supabase.auth.admin.createUser({
+                phone: `+91${phone}`,
+                email: dummyUser.email,
+                password: dummyUser.password,
+                user_metadata: {
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  password: dummyUser.password,
+                },
+                email_confirm: true,
+              });
+
+            if (authError) {
+              logger.error('Error creating dummy auth user:', authError);
+              return {
+                success: false,
+                error: 'Failed to create dummy user',
+              };
+            }
+
+            const { error: profileError } = await supabase
+              .from('profiles')
+              .insert([
+                {
+                  id: authUser.user.id,
+                  name: dummyUser.name,
+                  email: dummyUser.email,
+                  phone: dummyUser.phone,
+                  role: dummyUser.role,
+                },
+              ]);
+
+            if (profileError) {
+              logger.error('Error creating dummy profile:', profileError);
+              await supabase.auth.admin.deleteUser(authUser.user.id);
+              return {
+                success: false,
+                error: 'Failed to create dummy user profile',
+              };
+            }
+
+            // Fetch the newly created profile
+            const { data: newProfile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('phone', phone)
+              .single();
+
+            userProfile = newProfile;
+            logger.info(
+              `Created dummy user during partner verification: ${phone}`
+            );
+          } catch (error) {
+            logger.error(
+              'Exception creating dummy user during partner verification:',
+              error
+            );
+            return {
+              success: false,
+              error: 'Failed to create dummy user',
+            };
+          }
+        }
+
+        // Validate that dummy user is a player
+        if (userProfile.role !== 'player') {
+          return {
+            success: false,
+            error: 'Only registered players can be selected as partners',
+          };
+        }
+
+        logger.info(
+          `Dummy partner OTP verified successfully for phone: ${phone}`
+        );
+        return {
+          success: true,
+          user: {
+            id: userProfile.id,
+            role: userProfile.role,
+            name: userProfile.name,
+            email: userProfile.email,
+            phone: phone,
+          },
+        };
+      }
+
+      // Regular user OTP verification logic
+      const { data: otpRecord, error: otpError } = await supabase
+        .from('otps')
+        .select('*')
+        .eq('phone', phone)
+        .eq('otp_code', otp)
+        .eq('is_used', false)
+        .gte('expiry_time', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (otpError || !otpRecord) {
+        logger.warn(`Invalid or expired OTP for phone: ${phone}`);
+        return {
+          success: false,
+          error: 'Invalid or expired OTP',
+        };
+      }
+
+      // Mark OTP as used
+      const { error: updateError } = await supabase
+        .from('otps')
+        .update({ is_used: true })
+        .eq('id', otpRecord.id);
+
+      if (updateError) {
+        logger.error('Error updating OTP status:', updateError);
+        return {
+          success: false,
+          error: 'Failed to verify OTP',
+        };
+      }
+
+      // Get user profile
+      const { data: userProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('phone', phone)
+        .single();
+
+      if (profileError || !userProfile) {
+        logger.error('User profile not found:', profileError);
+        return {
+          success: false,
+          error: 'User profile not found',
+        };
+      }
+
+      // Only reject if they are registered as organizer/admin
+      // Allow players and guest users (which shouldn't happen with new generatePartnerOtp)
+      if (userProfile.role !== 'guest' && userProfile.role !== 'player') {
+        return {
+          success: false,
+          error: 'Only registered players can be selected as partners',
+        };
+      }
+
+      logger.info(`Partner OTP verified successfully for phone: ${phone}`);
+
+      return {
+        success: true,
+        user: {
+          id: userProfile.id,
+          role: userProfile.role,
+          name: userProfile.name,
+          email: userProfile.email,
+          phone: phone,
+        },
+      };
+    } catch (error) {
+      logger.error('Error in verifyPartnerOtp service:', error);
+      return {
+        success: false,
+        error: 'Internal server error',
+      };
+    }
+  }
+
+  /**
+   * Initialize dummy users in the database
+   */
+  async initializeDummyUsers() {
+    try {
+      logger.info('Initializing dummy users...');
+      const results = [];
+
+      for (const [phone, dummyUser] of Object.entries(DUMMY_USERS)) {
+        try {
+          // Check if user already exists
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id, role, name, email')
+            .eq('phone', phone)
+            .single();
+
+          if (existingProfile) {
+            logger.info(`Dummy user ${phone} already exists, skipping...`);
+            results.push({ phone, status: 'exists', user: existingProfile });
+            continue;
+          }
+
+          // Create auth user first
+          const { data: authUser, error: authError } =
+            await supabase.auth.admin.createUser({
+              phone: `+91${phone}`,
+              email: dummyUser.email,
+              password: dummyUser.password,
+              user_metadata: {
+                phone: dummyUser.phone,
+                role: dummyUser.role,
+                name: dummyUser.name,
+                email: dummyUser.email,
+                password: dummyUser.password,
+              },
+              email_confirm: true,
+            });
+
+          if (authError) {
+            logger.error(`Error creating auth user for ${phone}:`, authError);
+            results.push({ phone, status: 'error', error: authError.message });
+            continue;
+          }
+
+          // Create profile
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([
+              {
+                id: authUser.user.id,
+                name: dummyUser.name,
+                email: dummyUser.email,
+                phone: dummyUser.phone,
+                role: dummyUser.role,
+              },
+            ]);
+
+          if (profileError) {
+            logger.error(`Error creating profile for ${phone}:`, profileError);
+            // Clean up auth user if profile creation fails
+            await supabase.auth.admin.deleteUser(authUser.user.id);
+            results.push({
+              phone,
+              status: 'error',
+              error: profileError.message,
+            });
+            continue;
+          }
+
+          logger.info(
+            `Successfully created dummy user: ${phone} (${dummyUser.name})`
+          );
+          results.push({
+            phone,
+            status: 'created',
+            user: {
+              id: authUser.user.id,
+              name: dummyUser.name,
+              email: dummyUser.email,
+              role: dummyUser.role,
+            },
+          });
+        } catch (error) {
+          logger.error(`Exception creating dummy user ${phone}:`, error);
+          results.push({ phone, status: 'error', error: String(error) });
+        }
+      }
+
+      logger.info('Dummy users initialization completed');
+      return {
+        success: true,
+        message: 'Dummy users initialization completed',
+        results,
+      };
+    } catch (error) {
+      logger.error('Error in initializeDummyUsers:', error);
+      return {
+        success: false,
+        message: 'Failed to initialize dummy users',
+        error: String(error),
+      };
     }
   }
 }

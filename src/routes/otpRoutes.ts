@@ -228,6 +228,151 @@ router.post('/complete-registration', otpController.completeRegistration.bind(ot
 
 /**
  * @swagger
+ * /api/otp/validate-partner:
+ *   post:
+ *     summary: Validate if phone number belongs to a registered player
+ *     tags: [Partner Validation]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - phone
+ *             properties:
+ *               phone:
+ *                 type: string
+ *                 description: Phone number without country code (10 digits)
+ *                 example: "9876543210"
+ *                 pattern: "^[0-9]{10}$"
+ *     responses:
+ *       200:
+ *         description: Partner validation result
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 userExists:
+ *                   type: boolean
+ *                 isPlayer:
+ *                   type: boolean
+ *                 user:
+ *                   type: object
+ *                   nullable: true
+ *                 error:
+ *                   type: string
+ *                   nullable: true
+ *       400:
+ *         description: Bad request - validation error
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/validate-partner', otpController.validatePartner.bind(otpController));
+
+/**
+ * @swagger
+ * /api/otp/verify-partner:
+ *   post:
+ *     summary: Verify OTP for partner without affecting main session
+ *     tags: [Partner Validation]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - phone
+ *               - otp
+ *             properties:
+ *               phone:
+ *                 type: string
+ *                 description: Phone number without country code (10 digits)
+ *                 example: "9876543210"
+ *                 pattern: "^[0-9]{10}$"
+ *               otp:
+ *                 type: string
+ *                 description: 6-digit OTP code
+ *                 example: "123456"
+ *                 pattern: "^[0-9]{6}$"
+ *     responses:
+ *       200:
+ *         description: Partner OTP verified successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     phone:
+ *                       type: string
+ *                 error:
+ *                   type: string
+ *                   nullable: true
+ *       400:
+ *         description: Bad request - validation error or invalid OTP
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/verify-partner', otpController.verifyPartnerOtp.bind(otpController));
+
+/**
+ * @swagger
+ * /api/otp/init-dummy-users:
+ *   post:
+ *     summary: Initialize dummy users for testing
+ *     tags: [Development/Testing]
+ *     responses:
+ *       200:
+ *         description: Dummy users initialized successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       phone:
+ *                         type: string
+ *                       status:
+ *                         type: string
+ *                         enum: [created, exists, error]
+ *                       user:
+ *                         type: object
+ *                         nullable: true
+ *                       error:
+ *                         type: string
+ *                         nullable: true
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/init-dummy-users', otpController.initializeDummyUsers.bind(otpController));
+
+/**
+ * @swagger
  * /api/otp/health:
  *   get:
  *     summary: Health check for OTP service

@@ -187,6 +187,84 @@ export class OtpController {
   }
 
   /**
+   * Validate partner - check if phone belongs to registered player
+   */
+  async validatePartner(req: Request, res: Response): Promise<void> {
+    try {
+      // Validate request body
+      const { error } = generateOtpSchema.validate(req.body);
+      if (error) {
+        res.status(400).json({
+          success: false,
+          userExists: false,
+          isPlayer: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const { phone } = req.body as { phone: string };
+      const result = await otpService.validatePartner({ phone });
+      
+      res.status(200).json(result);
+    } catch (error: any) {
+      logger.error('Error in validatePartner controller:', error);
+      res.status(500).json({
+        success: false,
+        userExists: false,
+        isPlayer: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Verify OTP for partner without affecting main session
+   */
+  async verifyPartnerOtp(req: Request, res: Response): Promise<void> {
+    try {
+      // Validate request body
+      const { error } = verifyOtpSchema.validate(req.body);
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const { phone, otp } = req.body as VerifyOtpRequest;
+      const result = await otpService.verifyPartnerOtp({ phone, otp });
+      
+      res.status(200).json(result);
+    } catch (error: any) {
+      logger.error('Error in verifyPartnerOtp controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Initialize dummy users in the database
+   */
+  async initializeDummyUsers(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await otpService.initializeDummyUsers();
+      
+      res.status(200).json(result);
+    } catch (error: any) {
+      logger.error('Error in initializeDummyUsers controller:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to initialize dummy users',
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
    * Health check for OTP service
    */
   async healthCheck(req: Request, res: Response): Promise<void> {

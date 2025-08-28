@@ -90,6 +90,129 @@ const router = Router();
 
 /**
  * @swagger
+ * /api/payment/create-payment-link:
+ *   post:
+ *     summary: Create a new Razorpay payment link (only for default payment type)
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *               - context
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 minimum: 100
+ *                 description: Amount in paisa (smallest currency unit)
+ *                 example: 50000
+ *               currency:
+ *                 type: string
+ *                 default: INR
+ *                 example: INR
+ *               description:
+ *                 type: string
+ *                 maxLength: 255
+ *                 example: Tournament Registration Payment
+ *               customer:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                     maxLength: 100
+ *                     example: John Doe
+ *                   email:
+ *                     type: string
+ *                     format: email
+ *                     example: john@example.com
+ *                   contact:
+ *                     type: string
+ *                     pattern: '^[0-9]{10}$'
+ *                     example: 9876543210
+ *               notify:
+ *                 type: object
+ *                 properties:
+ *                   sms:
+ *                     type: boolean
+ *                     default: false
+ *                   email:
+ *                     type: boolean
+ *                     default: false
+ *                   whatsapp:
+ *                     type: boolean
+ *                     default: false
+ *               reminder_enable:
+ *                 type: boolean
+ *                 default: true
+ *               notes:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: string
+ *               callback_url:
+ *                 type: string
+ *                 format: uri
+ *                 example: https://example.com/payment-success
+ *               callback_method:
+ *                 type: string
+ *                 enum: [get]
+ *               expire_by:
+ *                 type: number
+ *                 description: Unix timestamp when link expires
+ *               context:
+ *                 type: object
+ *                 required:
+ *                   - type
+ *                   - id
+ *                   - player_id
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [tournament, league]
+ *                   id:
+ *                     type: string
+ *                     description: Tournament or League ID
+ *                   category_id:
+ *                     type: string
+ *                     description: Category ID (for tournaments)
+ *                   player_id:
+ *                     type: string
+ *                     description: Player ID making the payment
+ *     responses:
+ *       201:
+ *         description: Payment link created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 paymentLink:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     short_url:
+ *                       type: string
+ *                       description: The payment link URL
+ *                     amount:
+ *                       type: number
+ *                     currency:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *       400:
+ *         description: Bad request - validation error, not default payment type, or creation failed
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/create-payment-link', rateLimiter, paymentController.createPaymentLink);
+
+/**
+ * @swagger
  * /api/payment/create-order:
  *   post:
  *     summary: Create a new Razorpay order
