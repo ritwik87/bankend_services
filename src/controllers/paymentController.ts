@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { paymentService } from '../services/payment.service';
 import {
   CreateOrderRequest,
+  CreatePaymentLinkRequest,
   VerifyPaymentRequest,
   PaymentContext
 } from '../types/payment.types';
@@ -26,6 +27,33 @@ const verifyPaymentSchema = Joi.object({
   razorpay_order_id: Joi.string().required(),
   razorpay_payment_id: Joi.string().required(),
   razorpay_signature: Joi.string().required(),
+  context: Joi.object({
+    type: Joi.string().valid('tournament', 'league').required(),
+    id: Joi.string().required(),
+    category_id: Joi.string().optional(),
+    player_id: Joi.string().required()
+  }).required()
+});
+
+const createPaymentLinkSchema = Joi.object({
+  amount: Joi.number().integer().min(100).required(),
+  currency: Joi.string().length(3).default('INR'),
+  description: Joi.string().max(255).optional(),
+  customer: Joi.object({
+    name: Joi.string().max(100).optional(),
+    email: Joi.string().email().optional(),
+    contact: Joi.string().pattern(/^[0-9]{10}$/).optional()
+  }).optional(),
+  notify: Joi.object({
+    sms: Joi.boolean().optional(),
+    email: Joi.boolean().optional(),
+    whatsapp: Joi.boolean().optional()
+  }).optional(),
+  reminder_enable: Joi.boolean().optional(),
+  notes: Joi.object().optional(),
+  callback_url: Joi.string().uri().optional(),
+  callback_method: Joi.string().valid('get').optional(),
+  expire_by: Joi.number().integer().min(Math.floor(Date.now() / 1000)).optional(),
   context: Joi.object({
     type: Joi.string().valid('tournament', 'league').required(),
     id: Joi.string().required(),
@@ -78,6 +106,51 @@ export class PaymentController {
 
     } catch (error) {
       logger.error('Error in createOrder controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Create a new Razorpay payment link (only for default payment type)
+   */
+  async createPaymentLink(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = createPaymentLinkSchema.validate(req.body);
+      
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const paymentLinkData: CreatePaymentLinkRequest = value;
+
+      // Log the payment link creation attempt (without sensitive data)
+      logger.info('Creating payment link:', {
+        amount: paymentLinkData.amount,
+        currency: paymentLinkData.currency,
+        context: {
+          type: paymentLinkData.context.type,
+          id: paymentLinkData.context.id,
+          player_id: paymentLinkData.context.player_id
+        }
+      });
+
+      const result = await paymentService.createPaymentLink(paymentLinkData);
+
+      if (result.success) {
+        res.status(201).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in createPaymentLink controller:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'

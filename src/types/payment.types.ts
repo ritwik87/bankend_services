@@ -48,3 +48,63 @@ export interface PaymentContext {
   category_id?: string;
   player_id: string;
 }
+
+export interface CreatePaymentLinkRequest {
+  amount: number; // Amount in paisa (smallest currency unit)
+  currency: string; // e.g., 'INR'
+  description?: string;
+  customer?: {
+    name?: string;
+    email?: string;
+    contact?: string;
+  };
+  notify?: {
+    sms?: boolean;
+    email?: boolean;
+    whatsapp?: boolean;
+  };
+  reminder_enable?: boolean;
+  notes?: Record<string, string>;
+  callback_url?: string;
+  callback_method?: string;
+  expire_by?: number; // Unix timestamp
+  context: PaymentContext;
+}
+
+export interface CreatePaymentLinkResponse {
+  success: boolean;
+  paymentLink?: {
+    id: string;
+    amount: number;
+    amount_paid: number;
+    cancelled_at: number;
+    created_at: number;
+    currency: string;
+    customer?: {
+      contact?: string;
+      email?: string;
+      name?: string;
+    };
+    description?: string;
+    expire_by?: number;
+    expired_at?: number;
+    first_min_partial_amount?: number;
+    notes?: Record<string, string>;
+    notify?: {
+      email?: boolean;
+      sms?: boolean;
+      whatsapp?: boolean;
+    };
+    payments?: any[];
+    reference_id?: string;
+    reminder_enable?: boolean;
+    reminders?: any[];
+    short_url?: string;
+    status: string;
+    updated_at?: number;
+    upi_link?: boolean;
+    user_id?: string;
+    whatsapp_link?: boolean;
+  };
+  error?: string;
+}
