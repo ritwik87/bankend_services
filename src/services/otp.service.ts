@@ -181,8 +181,8 @@ class OtpService {
                 password: `${phone}`,
                 user_metadata: {
                   phone: phone,
-                  role: 'player', // Default to player for partner registration
-                  name: `Player ${phone.slice(-4)}`, // Default name with last 4 digits
+                  role: 'guest', // Default to player for partner registration
+                  name: `guest ${phone.slice(-4)}`, // Default name with last 4 digits
                   email: `${phone}@yopmail.com`, // Temporary email
                   password: `${phone}`,
                 },
@@ -298,7 +298,7 @@ class OtpService {
    */
   async verifyOtp(request: VerifyOtpRequest): Promise<VerifyOtpResponse> {
     try {
-      const { phone, otp } = request;
+      const { phone, otp, type } = request;
 
       // Find the most recent unused OTP for this phone
       const { data: otpRecord, error: otpError } = await supabase
@@ -343,7 +343,7 @@ class OtpService {
         .eq('phone', phone)
         .single();
 
-      if (profileError || !userProfile) {
+      if (type !== 'fromLogin' && (profileError || !userProfile)) {
         logger.error('User profile not found:', profileError);
         return {
           success: false,

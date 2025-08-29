@@ -14,6 +14,7 @@ export interface GenerateOtpResponse {
 export interface VerifyOtpRequest {
   phone: string;
   otp: string;
+  type?: string;
 }
 
 export interface VerifyOtpResponse {
