@@ -245,7 +245,10 @@ export class PaymentService {
   ): Promise<void> {
     try {
       // Step 1: Create registration record first
-      const registrationId = await this.createRegistrationRecord(context, paymentId);
+      const registrationId = await this.createRegistrationRecord(
+        context,
+        paymentId
+      );
 
       // Step 2: Get tournament/league information
       const tableName =
@@ -353,10 +356,7 @@ export class PaymentService {
         );
       }
     } catch (error) {
-      logger.error(
-        'Error in createRegistrationAndSendNotifications:',
-        error
-      );
+      logger.error('Error in createRegistrationAndSendNotifications:', error);
       throw error;
     }
   }
@@ -399,7 +399,7 @@ export class PaymentService {
           .insert({
             tournament_id: context.id,
             player_id: context.player_id,
-            status: 'confirmed',
+            status: 'approved',
             payment_status: 'paid',
             payment_id: paymentId,
           })
