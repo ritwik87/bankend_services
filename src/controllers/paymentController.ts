@@ -67,6 +67,19 @@ const validateCredentialsSchema = Joi.object({
   razorpay_secret: Joi.string().required()
 });
 
+const fetchTransactionsSchema = Joi.object({
+  type: Joi.string().valid('tournament', 'league').required(),
+  id: Joi.string().required(),
+  from: Joi.number().integer().optional(),
+  to: Joi.number().integer().optional(),
+  count: Joi.number().integer().min(1).max(100).default(10),
+  skip: Joi.number().integer().min(0).default(0)
+});
+
+const organizerTransactionsSchema = Joi.object({
+  organizerId: Joi.string().required()
+});
+
 export class PaymentController {
   /**
    * Create a new Razorpay order
@@ -258,6 +271,228 @@ export class PaymentController {
       message: 'Payment service is healthy',
       timestamp: new Date().toISOString()
     });
+  }
+
+  /**
+   * Fetch payments for a specific tournament or league
+   */
+  async fetchPayments(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = fetchTransactionsSchema.validate(req.body);
+      
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const context = value;
+
+      logger.info('Fetching payments:', {
+        type: context.type,
+        id: context.id,
+        count: context.count,
+        skip: context.skip
+      });
+
+      const result = await paymentService.fetchPayments(context);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in fetchPayments controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Fetch orders for a specific tournament or league
+   */
+  async fetchOrders(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = fetchTransactionsSchema.validate(req.body);
+      
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const context = value;
+
+      logger.info('Fetching orders:', {
+        type: context.type,
+        id: context.id,
+        count: context.count,
+        skip: context.skip
+      });
+
+      const result = await paymentService.fetchOrders(context);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in fetchOrders controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Fetch refunds for a specific tournament or league
+   */
+  async fetchRefunds(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = fetchTransactionsSchema.validate(req.body);
+      
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const context = value;
+
+      logger.info('Fetching refunds:', {
+        type: context.type,
+        id: context.id,
+        count: context.count,
+        skip: context.skip
+      });
+
+      const result = await paymentService.fetchRefunds(context);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in fetchRefunds controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Get transaction summary for a specific tournament or league
+   */
+  async getTransactionSummary(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = fetchTransactionsSchema.validate(req.body);
+      
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const context = value;
+
+      logger.info('Fetching transaction summary:', {
+        type: context.type,
+        id: context.id
+      });
+
+      const result = await paymentService.getTransactionSummary(context);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in getTransactionSummary controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Get aggregated transactions for organizer dashboard
+   */
+  async getOrganizerTransactions(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = organizerTransactionsSchema.validate(req.body);
+      
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const { organizerId } = value;
+
+      logger.info('Fetching organizer transactions:', { organizerId });
+
+      const result = await paymentService.getOrganizerTransactions(organizerId);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in getOrganizerTransactions controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Get aggregated transactions for admin dashboard
+   */
+  async getAdminTransactions(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('Fetching admin transactions');
+
+      const result = await paymentService.getAdminTransactions();
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in getAdminTransactions controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
   }
 }
 

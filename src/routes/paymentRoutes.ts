@@ -347,4 +347,198 @@ router.post(
  */
 router.get('/health', paymentController.healthCheck);
 
+/**
+ * @swagger
+ * /api/payment/fetch-payments:
+ *   post:
+ *     summary: Fetch payments for a tournament or league
+ *     tags: [Transactions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - id
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [tournament, league]
+ *               id:
+ *                 type: string
+ *               from:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               to:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               count:
+ *                 type: number
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 10
+ *               skip:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *     responses:
+ *       200:
+ *         description: Payments fetched successfully
+ */
+router.post('/fetch-payments', rateLimiter, paymentController.fetchPayments);
+
+/**
+ * @swagger
+ * /api/payment/fetch-orders:
+ *   post:
+ *     summary: Fetch orders for a tournament or league
+ *     tags: [Transactions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - id
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [tournament, league]
+ *               id:
+ *                 type: string
+ *               from:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               to:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               count:
+ *                 type: number
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 10
+ *               skip:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *     responses:
+ *       200:
+ *         description: Orders fetched successfully
+ */
+router.post('/fetch-orders', rateLimiter, paymentController.fetchOrders);
+
+/**
+ * @swagger
+ * /api/payment/fetch-refunds:
+ *   post:
+ *     summary: Fetch refunds for a tournament or league
+ *     tags: [Transactions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - id
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [tournament, league]
+ *               id:
+ *                 type: string
+ *               from:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               to:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               count:
+ *                 type: number
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 10
+ *               skip:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *     responses:
+ *       200:
+ *         description: Refunds fetched successfully
+ */
+router.post('/fetch-refunds', rateLimiter, paymentController.fetchRefunds);
+
+/**
+ * @swagger
+ * /api/payment/transaction-summary:
+ *   post:
+ *     summary: Get transaction summary for a tournament or league
+ *     tags: [Transactions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - id
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [tournament, league]
+ *               id:
+ *                 type: string
+ *               from:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               to:
+ *                 type: number
+ *                 description: Unix timestamp
+ *     responses:
+ *       200:
+ *         description: Transaction summary generated successfully
+ */
+router.post('/transaction-summary', rateLimiter, paymentController.getTransactionSummary);
+
+/**
+ * @swagger
+ * /api/payment/organizer-transactions:
+ *   post:
+ *     summary: Get aggregated transactions for organizer dashboard
+ *     tags: [Transactions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - organizerId
+ *             properties:
+ *               organizerId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Organizer transactions fetched successfully
+ */
+router.post('/organizer-transactions', rateLimiter, paymentController.getOrganizerTransactions);
+
+/**
+ * @swagger
+ * /api/payment/admin-transactions:
+ *   get:
+ *     summary: Get aggregated transactions for admin dashboard
+ *     tags: [Transactions]
+ *     responses:
+ *       200:
+ *         description: Admin transactions fetched successfully
+ */
+router.get('/admin-transactions', rateLimiter, paymentController.getAdminTransactions);
+
 export default router;
