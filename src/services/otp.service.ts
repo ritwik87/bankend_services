@@ -476,7 +476,11 @@ class OtpService {
             );
             // Continue with registration completion even if auth update fails
           }
-          return { success: true, user: { ...userData, phone }, message: '' };
+          return {
+            success: true,
+            user: updatedProfile,
+            message: 'Registration completed successfully',
+          };
         } catch (error) {
           logger.error('Exception during auth user update:', error);
           // Continue with registration completion even if auth update fails
@@ -1172,7 +1176,6 @@ class OtpService {
       }
 
       // Only reject if they are registered as organizer/admin
-      // Allow players and guest users (which shouldn't happen with new generatePartnerOtp)
       if (userProfile.role !== 'guest' && userProfile.role !== 'player') {
         return {
           success: false,
@@ -1180,10 +1183,19 @@ class OtpService {
         };
       }
 
+      // Check if user needs to complete registration (guest role or missing name/email)
+      const needsRegistration =
+        userProfile.role === 'guest' ||
+        !userProfile.name ||
+        userProfile.name.startsWith('guest ') ||
+        !userProfile.email ||
+        userProfile.email.includes('@yopmail.com');
+
       logger.info(`Partner OTP verified successfully for phone: ${phone}`);
 
       return {
         success: true,
+        needsRegistration,
         user: {
           id: userProfile.id,
           role: userProfile.role,
