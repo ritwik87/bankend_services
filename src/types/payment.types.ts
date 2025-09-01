@@ -45,8 +45,13 @@ export interface VerifyPaymentResponse {
 export interface PaymentContext {
   type: 'tournament' | 'league';
   id: string;
-  category_id?: string;
+  category_id?: string; // For backward compatibility
+  category_ids?: string; // Comma-separated category IDs for multiple categories
   player_id: string;
+  partner_id?: string; // For backward compatibility
+  category_partners?: string; // JSON string of category->partner mapping
+  custom_field_values?: string; // JSON string of custom field values for player
+  partner_custom_field_values?: string; // JSON string of partner custom field values per category
 }
 
 export interface CreatePaymentLinkRequest {
