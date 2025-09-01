@@ -19,7 +19,12 @@ const createOrderSchema = Joi.object({
     type: Joi.string().valid('tournament', 'league').required(),
     id: Joi.string().required(),
     category_id: Joi.string().optional(),
-    player_id: Joi.string().required()
+    category_ids: Joi.string().optional(),
+    player_id: Joi.string().required(),
+    partner_id: Joi.string().optional(),
+    category_partners: Joi.string().optional(),
+    custom_field_values: Joi.string().optional(),
+    partner_custom_field_values: Joi.string().optional()
   }).required()
 });
 
@@ -31,7 +36,12 @@ const verifyPaymentSchema = Joi.object({
     type: Joi.string().valid('tournament', 'league').required(),
     id: Joi.string().required(),
     category_id: Joi.string().optional(),
-    player_id: Joi.string().required()
+    category_ids: Joi.string().optional(),
+    player_id: Joi.string().required(),
+    partner_id: Joi.string().optional(),
+    category_partners: Joi.string().optional(),
+    custom_field_values: Joi.string().optional(),
+    partner_custom_field_values: Joi.string().optional()
   }).required()
 });
 
@@ -58,7 +68,12 @@ const createPaymentLinkSchema = Joi.object({
     type: Joi.string().valid('tournament', 'league').required(),
     id: Joi.string().required(),
     category_id: Joi.string().optional(),
-    player_id: Joi.string().required()
+    category_ids: Joi.string().optional(),
+    player_id: Joi.string().required(),
+    partner_id: Joi.string().optional(),
+    category_partners: Joi.string().optional(),
+    custom_field_values: Joi.string().optional(),
+    partner_custom_field_values: Joi.string().optional()
   }).required()
 });
 
