@@ -239,7 +239,15 @@ export class PaymentService {
    * Create registration record and send WhatsApp notifications
    */
   private async createRegistrationAndSendNotifications(
-    context: { type: 'tournament' | 'league'; id: string; player_id: string },
+    context: { 
+      type: 'tournament' | 'league'; 
+      id: string; 
+      player_id: string; 
+      category_id?: string; 
+      category_ids?: string;
+      partner_id?: string;
+      category_partners?: string;
+    },
     paymentDetails: any,
     paymentId: string
   ): Promise<void> {
@@ -365,7 +373,15 @@ export class PaymentService {
    * Create registration record in the database
    */
   private async createRegistrationRecord(
-    context: { type: 'tournament' | 'league'; id: string; player_id: string },
+    context: { 
+      type: 'tournament' | 'league'; 
+      id: string; 
+      player_id: string; 
+      category_id?: string; 
+      category_ids?: string;
+      partner_id?: string;
+      category_partners?: string;
+    },
     paymentId: string
   ): Promise<string> {
     try {
@@ -391,28 +407,73 @@ export class PaymentService {
         logger.info(`League registration created with ID: ${data.id}`);
         return data.id;
       } else {
-        // For tournaments, we might need to handle category registration
-        // For now, create a basic tournament registration record
-        // This should be adapted based on your tournament registration structure
-        const { data, error } = await supabase
-          .from('tournament_registrations')
-          .insert({
+        // For tournaments, handle multiple categories with their partners
+        const categoryIds = context.category_ids ? context.category_ids.split(',') : (context.category_id ? [context.category_id] : []);
+        const categoryPartnersMap = context.category_partners ? JSON.parse(context.category_partners) : {};
+        
+        if (categoryIds.length === 0) {
+          // Fallback for legacy single category without specific category
+          const registrationData: any = {
             tournament_id: context.id,
             player_id: context.player_id,
             status: 'approved',
             payment_status: 'paid',
             payment_id: paymentId,
-          })
-          .select('id')
-          .single();
+          };
+
+          if (context.partner_id) {
+            registrationData.partner_id = context.partner_id;
+          }
+
+          const { data, error } = await supabase
+            .from('tournament_registrations')
+            .insert(registrationData)
+            .select('id')
+            .single();
+
+          if (error) {
+            logger.error('Failed to create tournament registration:', error);
+            throw error;
+          }
+
+          logger.info(`Tournament registration created with ID: ${data.id}`);
+          return data.id;
+        }
+
+        // Create multiple registrations for each category
+        const registrationsToInsert = categoryIds.map(categoryId => {
+          const registrationData: any = {
+            tournament_id: context.id,
+            player_id: context.player_id,
+            category_id: categoryId,
+            status: 'approved',
+            payment_status: 'paid',
+            payment_id: paymentId,
+          };
+
+          // Add partner_id for this specific category if provided
+          if (categoryPartnersMap[categoryId]) {
+            registrationData.partner_id = categoryPartnersMap[categoryId];
+          }
+
+          return registrationData;
+        });
+
+        const { data, error } = await supabase
+          .from('tournament_registrations')
+          .insert(registrationsToInsert)
+          .select('id');
 
         if (error) {
-          logger.error('Failed to create tournament registration:', error);
+          logger.error('Failed to create tournament registrations:', error);
           throw error;
         }
 
-        logger.info(`Tournament registration created with ID: ${data.id}`);
-        return data.id;
+        const registrationIds = data.map(reg => reg.id);
+        logger.info(`Tournament registrations created with IDs: ${registrationIds.join(', ')}`);
+        
+        // Return the first registration ID for WhatsApp notifications
+        return registrationIds[0];
       }
     } catch (error) {
       logger.error('Error creating registration record:', error);
