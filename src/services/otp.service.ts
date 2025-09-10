@@ -40,6 +40,30 @@ const DUMMY_USERS = {
     email: 'dummy.admin@yopmail.com',
     password: '9999999993',
   },
+  '9999999994': {
+    phone: '9999999994',
+    otp: '999999',
+    role: 'player',
+    name: 'Dummy Player 2',
+    email: 'dummy.player4@yopmail.com',
+    password: '9999999994',
+  },
+  '9999999995': {
+    phone: '9999999995',
+    otp: '999999',
+    role: 'player',
+    name: 'Dummy Player 3',
+    email: 'dummy.player5@yopmail.com',
+    password: '9999999995',
+  },
+  '9999999996': {
+    phone: '9999999996',
+    otp: '999999',
+    role: 'player',
+    name: 'Dummy Player 4',
+    email: 'dummy.player6@yopmail.com',
+    password: '9999999996',
+  },
 };
 
 // Helper function to check if phone is a dummy user
