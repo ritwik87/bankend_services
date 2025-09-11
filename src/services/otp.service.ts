@@ -9,62 +9,17 @@ import {
   WhatsAppResponse,
 } from '../types/otp.types';
 import logger from '../utils/logger';
+import dummyPlayersData from '../../complete_dummy_players.json';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Dummy users for testing with static OTPs
-const DUMMY_USERS = {
-  '9999999991': {
-    phone: '9999999991',
-    otp: '999999',
-    role: 'player',
-    name: 'Dummy Player',
-    email: 'dummy.player@yopmail.com',
-    password: '9999999991',
-  },
-  '9999999992': {
-    phone: '9999999992',
-    otp: '999999',
-    role: 'organizer',
-    name: 'Dummy Organizer',
-    email: 'dummy.organizer@yopmail.com',
-    password: '9999999992',
-  },
-  '9999999993': {
-    phone: '9999999993',
-    otp: '999999',
-    role: 'admin',
-    name: 'Dummy Admin',
-    email: 'dummy.admin@yopmail.com',
-    password: '9999999993',
-  },
-  '9999999994': {
-    phone: '9999999994',
-    otp: '999999',
-    role: 'player',
-    name: 'Dummy Player 2',
-    email: 'dummy.player4@yopmail.com',
-    password: '9999999994',
-  },
-  '9999999995': {
-    phone: '9999999995',
-    otp: '999999',
-    role: 'player',
-    name: 'Dummy Player 3',
-    email: 'dummy.player5@yopmail.com',
-    password: '9999999995',
-  },
-  '9999999996': {
-    phone: '9999999996',
-    otp: '999999',
-    role: 'player',
-    name: 'Dummy Player 4',
-    email: 'dummy.player6@yopmail.com',
-    password: '9999999996',
-  },
-};
+// Convert JSON array to object with phone as key for easy lookup - Contains 114 total users (6 original + 108 new players)
+const DUMMY_USERS = dummyPlayersData.reduce((acc, user) => {
+  acc[user.phone] = user;
+  return acc;
+}, {} as Record<string, typeof dummyPlayersData[0]>);
 
 // Helper function to check if phone is a dummy user
 const isDummyUser = (phone: string): boolean => {
