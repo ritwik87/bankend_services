@@ -11,20 +11,22 @@ import logger from '../utils/logger';
 // Validation schemas
 const generateOtpSchema = Joi.object({
   phone: Joi.string()
-    .pattern(/^[0-9]{10}$/)
+    .pattern(/^\+[1-9]\d{1,3}[0-9]{6,14}$/) // E.164 format
     .required()
     .messages({
-      'string.pattern.base': 'Phone number must be exactly 10 digits',
+      'string.pattern.base':
+        'Phone number must be a valid international number (e.g. +919876543210)',
       'any.required': 'Phone number is required',
     }),
 });
 
 const verifyOtpSchema = Joi.object({
   phone: Joi.string()
-    .pattern(/^[0-9]{10}$/)
+    .pattern(/^\+[1-9]\d{1,3}[0-9]{6,14}$/) // E.164 format
     .required()
     .messages({
-      'string.pattern.base': 'Phone number must be exactly 10 digits',
+      'string.pattern.base':
+        'Phone number must be a valid international number (e.g. +919876543210)',
       'any.required': 'Phone number is required',
     }),
   otp: Joi.string()
@@ -39,10 +41,11 @@ const verifyOtpSchema = Joi.object({
 
 const completeRegistrationSchema = Joi.object({
   phone: Joi.string()
-    .pattern(/^[0-9]{10}$/)
+    .pattern(/^\+[1-9]\d{1,3}[0-9]{6,14}$/) // E.164 format
     .required()
     .messages({
-      'string.pattern.base': 'Phone number must be exactly 10 digits',
+      'string.pattern.base':
+        'Phone number must be a valid international number (e.g. +919876543210)',
       'any.required': 'Phone number is required',
     }),
   userData: Joi.object({
