@@ -8,6 +8,7 @@ import {
   VerifyOtpResponse,
   WhatsAppResponse,
 } from '../types/otp.types';
+import { phoneOrCondition } from '../utils/helper';
 import logger from '../utils/logger';
 import dummyPlayersData from '../../complete_dummy_players.json';
 
@@ -28,7 +29,8 @@ const isDummyUser = (phone: string): boolean => {
 
 // Helper function to get dummy user data
 const getDummyUser = (phone: string) => {
-  return DUMMY_USERS[phone as keyof typeof DUMMY_USERS] || null;
+  const mobile = phone?.split('+91')?.[1] || phone;
+  return DUMMY_USERS[mobile as keyof typeof DUMMY_USERS] || null;
 };
 
 class OtpService {
@@ -62,7 +64,7 @@ class OtpService {
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id, role, name, email')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .single();
 
       let userId = null;
@@ -82,7 +84,7 @@ class OtpService {
             // Create auth user first (required for foreign key constraint)
             const { data: authUser, error: authError } =
               await supabase.auth.admin.createUser({
-                phone: `+91${phone}`,
+                phone: `+91${phone.split('+91')?.[1]}`,
                 email: dummyUser.email,
                 password: dummyUser.password,
                 user_metadata: {
@@ -155,7 +157,7 @@ class OtpService {
             // Create auth user first (required for foreign key constraint)
             const { data: authUser, error: authError } =
               await supabase.auth.admin.createUser({
-                phone: `+91${phone}`,
+                phone: `${phone}`,
                 email: `${phone}@yopmail.com`,
                 password: `${phone}`,
                 user_metadata: {
@@ -283,7 +285,7 @@ class OtpService {
       const { data: otpRecord, error: otpError } = await supabase
         .from('otps')
         .select('*')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .eq('otp_code', otp)
         .eq('is_used', false)
         .gt('expiry_time', new Date().toISOString())
@@ -319,7 +321,7 @@ class OtpService {
       const { data: userProfile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .single();
 
       if (type !== 'fromLogin' && (profileError || !userProfile)) {
@@ -393,7 +395,7 @@ class OtpService {
       const { data: profile, error: findError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .single();
 
       if (findError || !profile) {
@@ -501,7 +503,7 @@ class OtpService {
           },
           body: JSON.stringify({
             messaging_product: 'whatsapp',
-            to: '+91' + phone,
+            to: phone,
             type: 'template',
             template: {
               name: 'order_details',
@@ -576,7 +578,7 @@ class OtpService {
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id, role, name, email')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .single();
 
       let userId = null;
@@ -595,7 +597,7 @@ class OtpService {
           try {
             const { data: authUser, error: authError } =
               await supabase.auth.admin.createUser({
-                phone: `+91${phone}`,
+                phone: `+91${phone.split('+91')?.[1]}`,
                 email: dummyUser.email,
                 password: dummyUser.password,
                 user_metadata: {
@@ -677,7 +679,7 @@ class OtpService {
           try {
             const { data: authUser, error: authError } =
               await supabase.auth.admin.createUser({
-                phone: `+91${phone}`,
+                phone: `${phone}`,
                 email: `${phone}@yopmail.com`,
                 password: `${phone}`,
                 user_metadata: {
@@ -809,7 +811,7 @@ class OtpService {
         const { data: existingProfile } = await supabase
           .from('profiles')
           .select('id, role, name, email')
-          .eq('phone', phone)
+          .or(phoneOrCondition(phone))
           .single();
 
         if (!existingProfile) {
@@ -817,7 +819,7 @@ class OtpService {
           try {
             const { data: authUser, error: authError } =
               await supabase.auth.admin.createUser({
-                phone: `+91${phone}`,
+                phone: `${phone}`,
                 email: dummyUser.email,
                 password: dummyUser.password,
                 user_metadata: {
@@ -925,7 +927,7 @@ class OtpService {
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('id, role, name, email')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .single();
 
       if (error || !profile) {
@@ -1009,7 +1011,7 @@ class OtpService {
         let { data: userProfile } = await supabase
           .from('profiles')
           .select('*')
-          .eq('phone', phone)
+          .or(phoneOrCondition(phone))
           .single();
 
         if (!userProfile) {
@@ -1017,7 +1019,7 @@ class OtpService {
           try {
             const { data: authUser, error: authError } =
               await supabase.auth.admin.createUser({
-                phone: `+91${phone}`,
+                phone: `${phone}`,
                 email: dummyUser.email,
                 password: dummyUser.password,
                 user_metadata: {
@@ -1063,7 +1065,7 @@ class OtpService {
             const { data: newProfile } = await supabase
               .from('profiles')
               .select('*')
-              .eq('phone', phone)
+              .or(phoneOrCondition(phone))
               .single();
 
             userProfile = newProfile;
@@ -1109,7 +1111,7 @@ class OtpService {
       const { data: otpRecord, error: otpError } = await supabase
         .from('otps')
         .select('*')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .eq('otp_code', otp)
         .eq('is_used', false)
         .gte('expiry_time', new Date().toISOString())
@@ -1143,7 +1145,7 @@ class OtpService {
       const { data: userProfile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
-        .eq('phone', phone)
+        .or(phoneOrCondition(phone))
         .single();
 
       if (profileError || !userProfile) {
@@ -1206,7 +1208,7 @@ class OtpService {
           const { data: existingProfile } = await supabase
             .from('profiles')
             .select('id, role, name, email')
-            .eq('phone', phone)
+            .or(phoneOrCondition(phone))
             .single();
 
           if (existingProfile) {
