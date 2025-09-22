@@ -239,11 +239,11 @@ export class PaymentService {
    * Create registration record and send WhatsApp notifications
    */
   private async createRegistrationAndSendNotifications(
-    context: { 
-      type: 'tournament' | 'league'; 
-      id: string; 
-      player_id: string; 
-      category_id?: string; 
+    context: {
+      type: 'tournament' | 'league';
+      id: string;
+      player_id: string;
+      category_id?: string;
       category_ids?: string;
       partner_id?: string;
       category_partners?: string;
@@ -373,11 +373,11 @@ export class PaymentService {
    * Create registration record in the database
    */
   private async createRegistrationRecord(
-    context: { 
-      type: 'tournament' | 'league'; 
-      id: string; 
-      player_id: string; 
-      category_id?: string; 
+    context: {
+      type: 'tournament' | 'league';
+      id: string;
+      player_id: string;
+      category_id?: string;
       category_ids?: string;
       partner_id?: string;
       category_partners?: string;
@@ -408,9 +408,15 @@ export class PaymentService {
         return data.id;
       } else {
         // For tournaments, handle multiple categories with their partners
-        const categoryIds = context.category_ids ? context.category_ids.split(',') : (context.category_id ? [context.category_id] : []);
-        const categoryPartnersMap = context.category_partners ? JSON.parse(context.category_partners) : {};
-        
+        const categoryIds = context.category_ids
+          ? context.category_ids.split(',')
+          : context.category_id
+          ? [context.category_id]
+          : [];
+        const categoryPartnersMap = context.category_partners
+          ? JSON.parse(context.category_partners)
+          : {};
+
         if (categoryIds.length === 0) {
           // Fallback for legacy single category without specific category
           const registrationData: any = {
@@ -441,7 +447,7 @@ export class PaymentService {
         }
 
         // Create multiple registrations for each category
-        const registrationsToInsert = categoryIds.map(categoryId => {
+        const registrationsToInsert = categoryIds.map((categoryId) => {
           const registrationData: any = {
             tournament_id: context.id,
             player_id: context.player_id,
@@ -469,9 +475,13 @@ export class PaymentService {
           throw error;
         }
 
-        const registrationIds = data.map(reg => reg.id);
-        logger.info(`Tournament registrations created with IDs: ${registrationIds.join(', ')}`);
-        
+        const registrationIds = data.map((reg) => reg.id);
+        logger.info(
+          `Tournament registrations created with IDs: ${registrationIds.join(
+            ', '
+          )}`
+        );
+
         // Return the first registration ID for WhatsApp notifications
         return registrationIds[0];
       }
@@ -624,7 +634,105 @@ export class PaymentService {
   }
 
   /**
-   * Fetch all payments for a specific tournament or league
+   * Fetch payments by specific payment IDs from database registrations
+   */
+  async fetchPaymentsByIds(context: {
+    type: 'tournament' | 'league';
+    id: string;
+  }): Promise<any> {
+    try {
+      const credentials = await this.fetchCredentials({
+        type: context.type,
+        id: context.id,
+      });
+
+      if (!credentials) {
+        return {
+          success: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
+      }
+
+      // Get payment IDs from database registrations
+      const tableName = context.type === 'tournament' ? 'tournament_registrations' : 'league_registrations';
+      const idColumn = context.type === 'tournament' ? 'tournament_id' : 'league_id';
+
+      const { data: registrations, error: dbError } = await supabase
+        .from(tableName)
+        .select('payment_id')
+        .eq(idColumn, context.id)
+        .not('payment_id', 'is', null);
+
+      if (dbError) {
+        logger.error(`Failed to fetch ${context.type} registrations:`, dbError);
+        return {
+          success: false,
+          error: `Failed to fetch ${context.type} registrations`,
+        };
+      }
+
+      const paymentIds = registrations?.map(reg => reg.payment_id).filter(Boolean) || [];
+
+      if (paymentIds.length === 0) {
+        return {
+          success: true,
+          items: [],
+          count: 0,
+          total_count: 0,
+        };
+      }
+
+      // Fetch each payment individually from Razorpay
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      const paymentPromises = paymentIds.map(async (paymentId) => {
+        try {
+          const response = await fetch(
+            `https://api.razorpay.com/v1/payments/${paymentId}`,
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Basic ${auth}`,
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (response.ok) {
+            return await response.json();
+          } else {
+            logger.warn(`Failed to fetch payment ${paymentId}:`, response.status);
+            return null;
+          }
+        } catch (error) {
+          logger.warn(`Error fetching payment ${paymentId}:`, error);
+          return null;
+        }
+      });
+
+      const payments = (await Promise.all(paymentPromises)).filter(Boolean);
+
+      return {
+        success: true,
+        items: payments,
+        count: payments.length,
+        total_count: paymentIds.length,
+        missing_payments: paymentIds.length - payments.length,
+      };
+    } catch (error) {
+      logger.error('Error fetching payments by IDs:', error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Fetch all payments for a specific tournament or league (Legacy method - uses metadata filtering)
    */
   async fetchPayments(context: {
     type: 'tournament' | 'league';
@@ -895,7 +1003,7 @@ export class PaymentService {
   }): Promise<any> {
     try {
       const [paymentsResult, refundsResult] = await Promise.all([
-        this.fetchPayments({ ...context, count: 100 }),
+        this.fetchPaymentsByIds(context),
         this.fetchRefunds({ ...context, count: 100 }),
       ]);
 
@@ -940,6 +1048,30 @@ export class PaymentService {
 
       totalAmount = capturedAmount + authorizedAmount;
 
+      // Process individual payment details for UI display
+      const paymentDetails = payments.map((payment: any) => {
+        const amount = payment.amount || 0;
+        const amountInRupees = amount / 100; // Convert from paisa to rupees
+        const razorpayFee = amountInRupees * 0.02; // 2% Razorpay fee
+        const gst = razorpayFee * 0.18; // 18% GST on fee
+        const cgst = gst / 2; // CGST is half of total GST
+        const sgst = gst / 2; // SGST is half of total GST
+        const totalFee = razorpayFee + gst;
+        const netAmount = amountInRupees - totalFee;
+
+        return {
+          payment_id: payment.id,
+          created_date: payment.created_at ? new Date(payment.created_at * 1000).toISOString().split('T')[0] : null,
+          registration_amount: amountInRupees,
+          razorpay_fee: razorpayFee,
+          cgst: cgst,
+          sgst: sgst,
+          net_amount: netAmount,
+          status: payment.status,
+          currency: 'INR'
+        };
+      });
+
       return {
         success: true,
         summary: {
@@ -953,6 +1085,7 @@ export class PaymentService {
           refund_count: refunds.length,
           currency: 'INR',
         },
+        payment_details: paymentDetails, // Add individual payment details
       };
     } catch (error) {
       logger.error('Error generating transaction summary:', error);
@@ -1055,6 +1188,7 @@ export class PaymentService {
           entity_name: s.entityName,
           entity_id: s.entityId,
           summary: s.summary,
+          payment_details: s.payment_details || [], // Include individual payment details
         })),
         errors: failedSummaries.length > 0 ? failedSummaries : null,
       };
@@ -1161,6 +1295,7 @@ export class PaymentService {
           entity_id: s.entityId,
           organizer_id: s.organizerId,
           summary: s.summary,
+          payment_details: s.payment_details || [], // Include individual payment details
         })),
       };
     } catch (error) {
