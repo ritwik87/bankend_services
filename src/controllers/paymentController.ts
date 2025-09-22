@@ -45,6 +45,12 @@ const verifyPaymentSchema = Joi.object({
   }).required()
 });
 
+const verifyPaymentIdSchema = Joi.object({
+  payment_id: Joi.string().required(),
+  entity_type: Joi.string().valid('tournament', 'league').required(),
+  entity_id: Joi.string().required()
+});
+
 const createPaymentLinkSchema = Joi.object({
   amount: Joi.number().integer().min(100).required(),
   currency: Joi.string().length(3).default('INR'),
@@ -503,6 +509,41 @@ export class PaymentController {
 
     } catch (error) {
       logger.error('Error in getAdminTransactions controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Verify payment ID exists and get payment details
+   */
+  async verifyPaymentId(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = verifyPaymentIdSchema.validate(req.body);
+
+      if (error) {
+        logger.error('Validation error in verifyPaymentId:', error.details);
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      logger.info('Verifying payment ID:', { payment_id: value.payment_id, entity_type: value.entity_type });
+
+      const result = await paymentService.verifyPaymentId(value);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in verifyPaymentId controller:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'

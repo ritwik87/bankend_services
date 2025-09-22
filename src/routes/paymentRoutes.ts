@@ -541,4 +541,36 @@ router.post('/organizer-transactions', rateLimiter, paymentController.getOrganiz
  */
 router.get('/admin-transactions', rateLimiter, paymentController.getAdminTransactions);
 
+/**
+ * @swagger
+ * /api/payment/verify-payment-id:
+ *   post:
+ *     summary: Verify payment ID exists and get payment details
+ *     tags: [Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payment_id
+ *               - entity_type
+ *               - entity_id
+ *             properties:
+ *               payment_id:
+ *                 type: string
+ *                 example: pay_1234567890
+ *               entity_type:
+ *                 type: string
+ *                 enum: [tournament, league]
+ *               entity_id:
+ *                 type: string
+ *                 example: uuid
+ *     responses:
+ *       200:
+ *         description: Payment verification result
+ */
+router.post('/verify-payment-id', rateLimiter, paymentController.verifyPaymentId);
+
 export default router;
