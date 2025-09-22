@@ -654,8 +654,12 @@ export class PaymentService {
       }
 
       // Get payment IDs from database registrations
-      const tableName = context.type === 'tournament' ? 'tournament_registrations' : 'league_registrations';
-      const idColumn = context.type === 'tournament' ? 'tournament_id' : 'league_id';
+      const tableName =
+        context.type === 'tournament'
+          ? 'tournament_registrations'
+          : 'league_registrations';
+      const idColumn =
+        context.type === 'tournament' ? 'tournament_id' : 'league_id';
 
       const { data: registrations, error: dbError } = await supabase
         .from(tableName)
@@ -671,7 +675,8 @@ export class PaymentService {
         };
       }
 
-      const paymentIds = registrations?.map(reg => reg.payment_id).filter(Boolean) || [];
+      const paymentIds =
+        registrations?.map((reg) => reg.payment_id).filter(Boolean) || [];
 
       if (paymentIds.length === 0) {
         return {
@@ -703,7 +708,10 @@ export class PaymentService {
           if (response.ok) {
             return await response.json();
           } else {
-            logger.warn(`Failed to fetch payment ${paymentId}:`, response.status);
+            logger.warn(
+              `Failed to fetch payment ${paymentId}:`,
+              response.status
+            );
             return null;
           }
         } catch (error) {
@@ -1061,14 +1069,16 @@ export class PaymentService {
 
         return {
           payment_id: payment.id,
-          created_date: payment.created_at ? new Date(payment.created_at * 1000).toISOString().split('T')[0] : null,
+          created_date: payment.created_at
+            ? new Date(payment.created_at * 1000).toISOString().split('T')[0]
+            : null,
           registration_amount: amountInRupees,
           razorpay_fee: razorpayFee,
           cgst: cgst,
           sgst: sgst,
           net_amount: netAmount,
           status: payment.status,
-          currency: 'INR'
+          currency: 'INR',
         };
       });
 
@@ -1305,6 +1315,310 @@ export class PaymentService {
         error:
           error instanceof Error ? error.message : 'Unknown error occurred',
       };
+    }
+  }
+
+  /**
+   * Verify payment ID exists and get payment details
+   */
+  async verifyPaymentId(data: {
+    payment_id: string;
+    entity_type: 'tournament' | 'league';
+    entity_id: string;
+  }): Promise<{
+    success: boolean;
+    valid: boolean;
+    payment_details?: any;
+    error?: string;
+  }> {
+    try {
+      const { payment_id, entity_type, entity_id } = data;
+
+      // Fetch credentials for this entity
+      const credentials = await this.fetchCredentials({
+        type: entity_type,
+        id: entity_id,
+      });
+
+      if (!credentials) {
+        return {
+          success: false,
+          valid: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
+      }
+
+      // Fetch payment details from Razorpay
+      const paymentDetails = await this.fetchPaymentDetails(
+        payment_id,
+        credentials
+      );
+
+      if (!paymentDetails) {
+        return {
+          success: true,
+          valid: false,
+          error: 'Payment ID not found or invalid',
+        };
+      }
+
+      // Check if payment is captured/successful
+      const isStatusValid =
+        paymentDetails.status === 'captured' ||
+        paymentDetails.status === 'authorized';
+
+      if (!isStatusValid) {
+        return {
+          success: true,
+          valid: false,
+          error: `Payment status is ${paymentDetails.status}`,
+        };
+      }
+
+      // Validate payment context matches the entity
+      const contextValid = await this.validatePaymentContext(paymentDetails, {
+        entity_type,
+        entity_id,
+      });
+
+      if (!contextValid.isValid) {
+        return {
+          success: true,
+          valid: false,
+          error: contextValid.error,
+          payment_details: {
+            id: paymentDetails.id,
+            amount: paymentDetails.amount,
+            currency: paymentDetails.currency,
+            status: paymentDetails.status,
+            created_at: paymentDetails.created_at,
+            method: paymentDetails.method,
+            captured: paymentDetails.captured,
+            description: paymentDetails.description,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        valid: true,
+        payment_details: {
+          id: paymentDetails.id,
+          amount: paymentDetails.amount,
+          currency: paymentDetails.currency,
+          status: paymentDetails.status,
+          created_at: paymentDetails.created_at,
+          method: paymentDetails.method,
+          captured: paymentDetails.captured,
+          description: paymentDetails.description,
+        },
+      };
+    } catch (error) {
+      logger.error('Error verifying payment ID:', error);
+      return {
+        success: false,
+        valid: false,
+        error: error instanceof Error ? error.message : 'Verification failed',
+      };
+    }
+  }
+
+  /**
+   * Validate that payment context matches the expected entity
+   */
+  private async validatePaymentContext(
+    paymentDetails: any,
+    expectedContext: {
+      entity_type: 'tournament' | 'league';
+      entity_id: string;
+    }
+  ): Promise<{ isValid: boolean; error?: string }> {
+    try {
+      // Check payment notes for entity information
+      const notes = paymentDetails.notes || {};
+      const description = paymentDetails.description || '';
+
+      // Check if entity ID is in notes
+      const entityIdInNotes =
+        notes.tournament_id === expectedContext.entity_id ||
+        notes.league_id === expectedContext.entity_id ||
+        notes.entity_id === expectedContext.entity_id;
+
+      // Check if entity type matches in notes
+      const entityTypeInNotes =
+        notes.entity_type === expectedContext.entity_type ||
+        notes.type === expectedContext.entity_type;
+
+      // Check description for entity information (fallback)
+      const entityIdInDescription = description.includes(
+        expectedContext.entity_id
+      );
+
+      // Additional check: Look for entity in order receipt if available
+      const receipt = paymentDetails.receipt || '';
+      const entityInReceipt =
+        receipt.includes(expectedContext.entity_id) ||
+        receipt.includes(expectedContext.entity_type);
+
+      // If we find clear evidence of mismatch
+      if (
+        notes.entity_type &&
+        notes.entity_type !== expectedContext.entity_type
+      ) {
+        return {
+          isValid: false,
+          error: `Payment was made for ${notes.entity_type}, not ${expectedContext.entity_type}`,
+        };
+      }
+
+      if (notes.tournament_id && expectedContext.entity_type === 'league') {
+        return {
+          isValid: false,
+          error: 'Payment was made for a tournament, not a league',
+        };
+      }
+
+      if (notes.league_id && expectedContext.entity_type === 'tournament') {
+        return {
+          isValid: false,
+          error: 'Payment was made for a league, not a tournament',
+        };
+      }
+
+      // If we have specific entity ID in notes but it doesn't match
+      if (
+        (notes.tournament_id || notes.league_id || notes.entity_id) &&
+        !entityIdInNotes
+      ) {
+        const actualEntityId =
+          notes.tournament_id || notes.league_id || notes.entity_id;
+        return {
+          isValid: false,
+          error: `Payment was made for a different ${expectedContext.entity_type}`,
+        };
+      }
+
+      // If we have strong positive evidence, payment is valid
+      if (
+        entityIdInNotes ||
+        (entityTypeInNotes && entityIdInDescription) ||
+        entityInReceipt
+      ) {
+        const existingRegistration = await this.checkExistingRegistration(
+          paymentDetails.id,
+          expectedContext
+        );
+
+        if (existingRegistration.found) {
+          if (existingRegistration.matchesEntity) {
+            return {
+              isValid: false,
+              error: `Payment ID already used for registration in different ${existingRegistration.actualEntityType}`,
+            };
+          } else {
+            return {
+              isValid: true,
+            };
+          }
+        }
+      }
+
+      // If no clear context information found, check database records
+      // This is a fallback to check if this payment ID already exists for this entity
+      // const existingRegistration = await this.checkExistingRegistration(
+      //   paymentDetails.id,
+      //   expectedContext
+      // );
+
+      // if (existingRegistration.found) {
+      //   if (existingRegistration.matchesEntity) {
+      //     return {
+      //       isValid: false,
+      //       error: `Payment ID already used for registration in different ${existingRegistration.actualEntityType}`,
+      //     };
+      //   } else {
+      //     return {
+      //       isValid: true,
+      //     };
+      //   }
+      // }
+
+      // If no context found and no existing registration, warn but allow
+      // (This handles cases where payment was made manually without proper context)
+      logger.warn('Payment context validation: No clear context found', {
+        paymentId: paymentDetails.id,
+        expectedContext,
+        notes,
+        description,
+        receipt,
+      });
+
+      return { isValid: false };
+    } catch (error) {
+      logger.error('Error validating payment context:', error);
+      return {
+        isValid: false,
+        error: 'Failed to validate payment context',
+      };
+    }
+  }
+
+  /**
+   * Check if payment ID already exists in registration tables
+   */
+  private async checkExistingRegistration(
+    paymentId: string,
+    expectedContext: {
+      entity_type: 'tournament' | 'league';
+      entity_id: string;
+    }
+  ): Promise<{
+    found: boolean;
+    matchesEntity: boolean;
+    actualEntityType?: string;
+    actualEntityId?: string;
+  }> {
+    try {
+      // Check tournament registrations
+      const { data: tournamentReg } = await supabase
+        .from('tournament_registrations')
+        .select('tournament_id')
+        .eq('payment_id', paymentId)
+        .single();
+
+      if (tournamentReg) {
+        return {
+          found: true,
+          matchesEntity:
+            expectedContext.entity_type === 'tournament' &&
+            tournamentReg.tournament_id === expectedContext.entity_id,
+          actualEntityType: 'tournament',
+          actualEntityId: tournamentReg.tournament_id,
+        };
+      }
+
+      // Check league registrations
+      const { data: leagueReg } = await supabase
+        .from('league_registrations')
+        .select('league_id')
+        .eq('payment_id', paymentId)
+        .single();
+
+      if (leagueReg) {
+        return {
+          found: true,
+          matchesEntity:
+            expectedContext.entity_type === 'league' &&
+            leagueReg.league_id === expectedContext.entity_id,
+          actualEntityType: 'league',
+          actualEntityId: leagueReg.league_id,
+        };
+      }
+
+      return { found: false, matchesEntity: false };
+    } catch (error) {
+      logger.error('Error checking existing registration:', error);
+      return { found: false, matchesEntity: false };
     }
   }
 }
