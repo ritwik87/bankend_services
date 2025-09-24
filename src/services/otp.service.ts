@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import dummyPlayersData from '../../complete_dummy_players.json';
 import {
   CompleteRegistrationRequest,
   CompleteRegistrationResponse,
@@ -10,7 +11,6 @@ import {
 } from '../types/otp.types';
 import { phoneOrCondition } from '../utils/helper';
 import logger from '../utils/logger';
-import dummyPlayersData from '../../complete_dummy_players.json';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -20,7 +20,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const DUMMY_USERS = dummyPlayersData.reduce((acc, user) => {
   acc[user.phone] = user;
   return acc;
-}, {} as Record<string, typeof dummyPlayersData[0]>);
+}, {} as Record<string, (typeof dummyPlayersData)[0]>);
 
 // Helper function to check if phone is a dummy user
 const isDummyUser = (phone: string): boolean => {
@@ -885,7 +885,7 @@ class OtpService {
         }
 
         // For dummy users, return their configured role validation
-        const isPlayer = dummyUser.role === 'player';
+        const isPlayer = dummyUser.role !== 'guest';
         if (!isPlayer) {
           return {
             success: false,
@@ -1084,8 +1084,8 @@ class OtpService {
           }
         }
 
-        // Validate that dummy user is a player
-        if (userProfile.role !== 'guest') {
+        // Validate that dummy user is a guest
+        if (userProfile.role === 'guest') {
           return {
             success: false,
             error: 'Only registered players can be selected as partners',
@@ -1157,7 +1157,7 @@ class OtpService {
       }
 
       // Only reject if they are registered as guest
-      if (userProfile.role !== 'guest') {
+      if (userProfile.role === 'guest') {
         return {
           success: false,
           error: 'Only registered players can be selected as partners',
