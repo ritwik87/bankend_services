@@ -550,6 +550,108 @@ export class PaymentController {
       });
     }
   }
+
+  /**
+   * Create organizer payment order (for tournament/league creation)
+   */
+  async createOrganizerOrder(req: Request, res: Response): Promise<void> {
+    try {
+      const createOrganizerOrderSchema = Joi.object({
+        amount: Joi.number().positive().required(),
+        currency: Joi.string().length(3).default('INR'),
+        receipt: Joi.string().max(40).optional(),
+        notes: Joi.object().optional(),
+        context: Joi.object({
+          type: Joi.string().valid('tournament', 'league').required(),
+          organizer_id: Joi.string().required(),
+          entity_name: Joi.string().required(),
+        }).required(),
+      });
+
+      const { error, value } = createOrganizerOrderSchema.validate(req.body);
+
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message,
+        });
+        return;
+      }
+
+      logger.info('Creating organizer payment order:', {
+        amount: value.amount,
+        type: value.context.type,
+        organizer_id: value.context.organizer_id,
+      });
+
+      const result = await paymentService.createOrganizerOrder(value);
+
+      if (result.success) {
+        res.status(201).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error) {
+      logger.error('Error in createOrganizerOrder controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  }
+
+  /**
+   * Verify organizer payment
+   */
+  async verifyOrganizerPayment(req: Request, res: Response): Promise<void> {
+    try {
+      const verifyOrganizerPaymentSchema = Joi.object({
+        razorpay_order_id: Joi.string().required(),
+        razorpay_payment_id: Joi.string().required(),
+        razorpay_signature: Joi.string().required(),
+        context: Joi.object({
+          type: Joi.string().valid('tournament', 'league').required(),
+          organizer_id: Joi.string().required(),
+        }).required(),
+      });
+
+      const { error, value } = verifyOrganizerPaymentSchema.validate(req.body);
+
+      if (error) {
+        res.status(400).json({
+          success: false,
+          verified: false,
+          error: error.details[0].message,
+        });
+        return;
+      }
+
+      logger.info('Verifying organizer payment:', {
+        payment_id: value.razorpay_payment_id,
+        type: value.context.type,
+        entity_id: value.context.entity_id,
+      });
+
+      const result = await paymentService.verifyOrganizerPayment(value);
+
+      if (result.success) {
+        if (result.verified) {
+          res.status(200).json(result);
+        } else {
+          res.status(400).json(result);
+        }
+      } else {
+        res.status(500).json(result);
+      }
+    } catch (error) {
+      logger.error('Error in verifyOrganizerPayment controller:', error);
+      res.status(500).json({
+        success: false,
+        verified: false,
+        error: 'Internal server error',
+      });
+    }
+  }
 }
 
 export const paymentController = new PaymentController();
