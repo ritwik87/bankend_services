@@ -1085,7 +1085,7 @@ class OtpService {
         }
 
         // Validate that dummy user is a player
-        if (userProfile.role !== 'player') {
+        if (userProfile.role !== 'guest') {
           return {
             success: false,
             error: 'Only registered players can be selected as partners',
@@ -1156,8 +1156,8 @@ class OtpService {
         };
       }
 
-      // Only reject if they are registered as organizer/admin
-      if (userProfile.role !== 'guest' && userProfile.role !== 'player') {
+      // Only reject if they are registered as guest
+      if (userProfile.role !== 'guest') {
         return {
           success: false,
           error: 'Only registered players can be selected as partners',
