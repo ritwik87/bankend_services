@@ -573,4 +573,99 @@ router.get('/admin-transactions', rateLimiter, paymentController.getAdminTransac
  */
 router.post('/verify-payment-id', rateLimiter, paymentController.verifyPaymentId);
 
+/**
+ * @swagger
+ * /api/payment/create-organizer-order:
+ *   post:
+ *     summary: Create payment order for organizer (tournament/league creation)
+ *     tags: [Organizer Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *               - context
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 minimum: 1
+ *                 description: Amount in INR
+ *                 example: 500
+ *               currency:
+ *                 type: string
+ *                 default: INR
+ *               receipt:
+ *                 type: string
+ *                 maxLength: 40
+ *               notes:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: string
+ *               context:
+ *                 type: object
+ *                 required:
+ *                   - type
+ *                   - organizer_id
+ *                   - entity_name
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [tournament, league]
+ *                   organizer_id:
+ *                     type: string
+ *                   entity_name:
+ *                     type: string
+ *     responses:
+ *       201:
+ *         description: Organizer order created successfully
+ */
+router.post('/create-organizer-order', rateLimiter, paymentController.createOrganizerOrder);
+
+/**
+ * @swagger
+ * /api/payment/verify-organizer-payment:
+ *   post:
+ *     summary: Verify organizer payment and update entity
+ *     tags: [Organizer Payment]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - razorpay_order_id
+ *               - razorpay_payment_id
+ *               - razorpay_signature
+ *               - context
+ *             properties:
+ *               razorpay_order_id:
+ *                 type: string
+ *               razorpay_payment_id:
+ *                 type: string
+ *               razorpay_signature:
+ *                 type: string
+ *               context:
+ *                 type: object
+ *                 required:
+ *                   - type
+ *                   - entity_id
+ *                   - organizer_id
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [tournament, league]
+ *                   entity_id:
+ *                     type: string
+ *                   organizer_id:
+ *                     type: string
+ *     responses:
+ *       200:
+ *         description: Organizer payment verified successfully
+ */
+router.post('/verify-organizer-payment', rateLimiter, paymentController.verifyOrganizerPayment);
+
 export default router;
