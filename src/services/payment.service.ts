@@ -1621,6 +1621,166 @@ export class PaymentService {
       return { found: false, matchesEntity: false };
     }
   }
+
+  /**
+   * Create payment order for organizer (tournament/league creation)
+   */
+  async createOrganizerOrder(orderData: {
+    amount: number; // Amount in INR
+    currency?: string;
+    receipt?: string;
+    notes?: Record<string, string>;
+    context: {
+      type: 'tournament' | 'league';
+      organizer_id: string;
+      entity_name: string;
+    };
+  }): Promise<CreateOrderResponse> {
+    try {
+      // Use default system credentials for organizer payments
+      const credentials = {
+        key: process.env.RAZORPAY_KEY,
+        secret: process.env.RAZORPAY_SECRET,
+      };
+
+      if (!credentials.key || !credentials.secret) {
+        return {
+          success: false,
+          error: 'Razorpay credentials not configured',
+        };
+      }
+
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      const response = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: Math.round(orderData.amount * 100), // Convert to paisa
+          currency: orderData.currency || 'INR',
+          receipt: orderData.receipt,
+          notes: {
+            ...orderData.notes,
+            type: 'organizer_payment',
+            entity_type: orderData.context.type,
+            organizer_id: orderData.context.organizer_id,
+            entity_name: orderData.context.entity_name,
+          },
+        }),
+      });
+
+      const data: any = await response.json();
+
+      if (!response.ok) {
+        logger.error('Failed to create organizer order:', data);
+        return {
+          success: false,
+          error: data.error?.description || 'Failed to create order',
+        };
+      }
+
+      logger.info('Organizer order created successfully:', data.id);
+      return {
+        success: true,
+        order: data,
+      };
+    } catch (error) {
+      logger.error('Error creating organizer order:', error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Verify organizer payment (payment verification only)
+   */
+  async verifyOrganizerPayment(verificationData: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    context: {
+      type: 'tournament' | 'league';
+      organizer_id: string;
+    };
+  }): Promise<VerifyPaymentResponse> {
+    try {
+      // Use default system credentials
+      const credentials = {
+        key: process.env.RAZORPAY_KEY || '',
+        secret: process.env.RAZORPAY_SECRET || '',
+      };
+
+      if (!credentials.key || !credentials.secret) {
+        return {
+          success: false,
+          verified: false,
+          error: 'Razorpay credentials not configured',
+        };
+      }
+
+      // Verify payment signature
+      const body =
+        verificationData.razorpay_order_id +
+        '|' +
+        verificationData.razorpay_payment_id;
+      const expectedSignature = crypto
+        .createHmac('sha256', credentials.secret)
+        .update(body.toString())
+        .digest('hex');
+
+      const isSignatureValid =
+        expectedSignature === verificationData.razorpay_signature;
+
+      if (!isSignatureValid) {
+        logger.error('Invalid organizer payment signature');
+        return {
+          success: true,
+          verified: false,
+          error: 'Invalid payment signature',
+        };
+      }
+
+      // Fetch payment details from Razorpay for verification
+      const paymentDetails = await this.fetchPaymentDetails(
+        verificationData.razorpay_payment_id,
+        credentials
+      );
+
+      if (!paymentDetails) {
+        return {
+          success: true,
+          verified: false,
+          error: 'Payment not found',
+        };
+      }
+
+      logger.info(
+        'Organizer payment verified successfully:',
+        verificationData.razorpay_payment_id
+      );
+      return {
+        success: true,
+        verified: true,
+        payment_details: paymentDetails,
+      };
+    } catch (error) {
+      logger.error('Error verifying organizer payment:', error);
+      return {
+        success: false,
+        verified: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
 }
 
 export const paymentService = new PaymentService();
