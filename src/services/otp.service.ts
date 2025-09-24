@@ -942,7 +942,7 @@ class OtpService {
 
       // Check if user is a registered player (not guest)
       const isPlayer =
-        profile.role === 'player' && profile.name && profile.email;
+        profile.role !== 'guest' && profile.name && profile.email;
 
       if (!isPlayer) {
         let errorMessage;
