@@ -79,7 +79,7 @@ class DuprAuthService {
 
   async makeAuthenticatedRequest(
     url: string,
-    method: 'GET' | 'POST' = 'GET',
+    method: 'GET' | 'POST' | 'DELETE' = 'GET',
     data?: any
   ) {
     const token = await this.getAuthToken();
