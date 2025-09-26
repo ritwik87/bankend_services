@@ -281,6 +281,142 @@ router.get('/search', duprController.searchPlayers);
 
 /**
  * @swagger
+ * /api/dupr/upload-match:
+ *   post:
+ *     tags:
+ *       - DUPR Match Upload
+ *     summary: Upload Match Result to DUPR
+ *     description: Upload a completed match result to DUPR system for rating calculation
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/DuprMatchUploadRequest'
+ *           examples:
+ *             singlesMatch:
+ *               summary: Singles match upload
+ *               value:
+ *                 tournament_id: "tournament-123"
+ *                 event_name: "Summer Tournament 2024"
+ *                 event_date: "2024-08-15"
+ *                 location: "Local Recreation Center"
+ *                 match_type: "singles"
+ *                 team1_player1_dupr_id: "player-456"
+ *                 team1_player1_name: "John Smith"
+ *                 team2_player1_dupr_id: "player-789"
+ *                 team2_player1_name: "Jane Doe"
+ *                 team1_score: 11
+ *                 team2_score: 8
+ *                 completed_at: "2024-08-15T14:30:00Z"
+ *             doublesMatch:
+ *               summary: Doubles match upload
+ *               value:
+ *                 tournament_id: "tournament-123"
+ *                 event_name: "Summer Tournament 2024"
+ *                 event_date: "2024-08-15"
+ *                 location: "Local Recreation Center"
+ *                 match_type: "doubles"
+ *                 team1_player1_dupr_id: "player-456"
+ *                 team1_player1_name: "John Smith"
+ *                 team1_player2_dupr_id: "player-111"
+ *                 team1_player2_name: "Bob Johnson"
+ *                 team2_player1_dupr_id: "player-789"
+ *                 team2_player1_name: "Jane Doe"
+ *                 team2_player2_dupr_id: "player-222"
+ *                 team2_player2_name: "Alice Brown"
+ *                 team1_score: 11
+ *                 team2_score: 9
+ *                 completed_at: "2024-08-15T15:45:00Z"
+ *                 court_number: 3
+ *     responses:
+ *       200:
+ *         description: Match uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       $ref: '#/components/schemas/DuprMatchUploadResponse'
+ *             examples:
+ *               success:
+ *                 summary: Match upload successful
+ *                 value:
+ *                   success: true
+ *                   data:
+ *                     dupr_match_id: "dupr-match-789"
+ *                     tournament_id: "tournament-123"
+ *                     status: "processed"
+ *                     uploaded_at: "2024-08-15T16:00:00Z"
+ *                   message: "Match uploaded successfully to DUPR"
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.post('/upload-match', duprController.uploadMatch);
+
+/**
+ * @swagger
+ * /api/dupr/upload-matches:
+ *   post:
+ *     tags:
+ *       - DUPR Match Upload
+ *     summary: Upload Multiple Match Results to DUPR
+ *     description: Upload multiple completed match results to DUPR system in batch
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               matches:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/DuprMatchUploadRequest'
+ *             required: [matches]
+ *     responses:
+ *       200:
+ *         description: Matches upload completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         successful:
+ *                           type: number
+ *                         failed:
+ *                           type: number
+ *                         results:
+ *                           type: array
+ *                           items:
+ *                             $ref: '#/components/schemas/DuprMatchUploadResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.post('/upload-matches', duprController.uploadMatches);
+
+/**
+ * @swagger
  * /api/dupr/health:
  *   get:
  *     tags:

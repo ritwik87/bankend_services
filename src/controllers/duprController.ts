@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import { ApiResponse, DuprValidationRequest } from '../types/dupr.types';
+import { ApiResponse, DuprValidationRequest, DuprMatchUploadRequest, DuprMatchUploadResponse, DuprBatchUploadResponse } from '../types/dupr.types';
 import duprPlayerService from '../services/duprPlayer.service';
+import duprMatchService from '../services/duprMatch.service';
 import { validateRequest, duprValidationSchema, duprIdSchema } from '../utils/validation';
 import logger from '../utils/logger';
 
@@ -192,6 +193,91 @@ export class DuprController {
       };
 
       res.status(503).json(response);
+    }
+  }
+
+  async uploadMatch(req: Request, res: Response): Promise<void> {
+    try {
+      const matchData: DuprMatchUploadRequest = req.body;
+
+      // Validate required fields
+      if (!matchData.event || !matchData.identifier || !matchData.matchDate || !matchData.teamA || !matchData.teamB) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Missing required fields',
+          message: 'Event, identifier, matchDate, teamA, and teamB are required'
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const uploadResponse = await duprMatchService.uploadMatch(matchData);
+
+      if (uploadResponse.success) {
+        const response: ApiResponse<DuprMatchUploadResponse> = {
+          success: true,
+          data: uploadResponse,
+          message: 'Match uploaded successfully to DUPR'
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: uploadResponse.error || 'Upload failed',
+          message: uploadResponse.message || 'Failed to upload match to DUPR'
+        };
+
+        res.status(400).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Upload match controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to upload match'
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async uploadMatches(req: Request, res: Response): Promise<void> {
+    try {
+      const { matches } = req.body;
+
+      if (!matches || !Array.isArray(matches) || matches.length === 0) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Invalid matches data',
+          message: 'Matches array is required and cannot be empty'
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const batchResponse = await duprMatchService.uploadMatches(matches);
+
+      const response: ApiResponse<DuprBatchUploadResponse> = {
+        success: batchResponse.successful > 0,
+        data: batchResponse,
+        message: `Upload completed: ${batchResponse.successful} successful, ${batchResponse.failed} failed`
+      };
+
+      res.status(200).json(response);
+    } catch (error: any) {
+      logger.error('Upload matches batch controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to upload matches batch'
+      };
+
+      res.status(500).json(response);
     }
   }
 }
