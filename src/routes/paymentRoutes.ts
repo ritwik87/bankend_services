@@ -1,8 +1,16 @@
 import { Router } from 'express';
 import { paymentController } from '../controllers/paymentController';
+import {
+  requireAdmin,
+  requireAdminOrOrganizer,
+  requireAuth,
+} from '../middleware/auth';
 import { duprApiLimiter as rateLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
+
+// Apply authentication to all payment routes
+router.use(requireAuth);
 
 /**
  * @swagger
@@ -209,7 +217,11 @@ const router = Router();
  *       500:
  *         description: Internal server error
  */
-router.post('/create-payment-link', rateLimiter, paymentController.createPaymentLink);
+router.post(
+  '/create-payment-link',
+  rateLimiter,
+  paymentController.createPaymentLink
+);
 
 /**
  * @swagger
@@ -504,7 +516,11 @@ router.post('/fetch-refunds', rateLimiter, paymentController.fetchRefunds);
  *       200:
  *         description: Transaction summary generated successfully
  */
-router.post('/transaction-summary', rateLimiter, paymentController.getTransactionSummary);
+router.post(
+  '/transaction-summary',
+  rateLimiter,
+  paymentController.getTransactionSummary
+);
 
 /**
  * @swagger
@@ -527,7 +543,12 @@ router.post('/transaction-summary', rateLimiter, paymentController.getTransactio
  *       200:
  *         description: Organizer transactions fetched successfully
  */
-router.post('/organizer-transactions', rateLimiter, paymentController.getOrganizerTransactions);
+router.post(
+  '/organizer-transactions',
+  rateLimiter,
+  requireAdminOrOrganizer,
+  paymentController.getOrganizerTransactions
+);
 
 /**
  * @swagger
@@ -539,7 +560,12 @@ router.post('/organizer-transactions', rateLimiter, paymentController.getOrganiz
  *       200:
  *         description: Admin transactions fetched successfully
  */
-router.get('/admin-transactions', rateLimiter, paymentController.getAdminTransactions);
+router.get(
+  '/admin-transactions',
+  rateLimiter,
+  requireAdmin,
+  paymentController.getAdminTransactions
+);
 
 /**
  * @swagger
@@ -571,7 +597,11 @@ router.get('/admin-transactions', rateLimiter, paymentController.getAdminTransac
  *       200:
  *         description: Payment verification result
  */
-router.post('/verify-payment-id', rateLimiter, paymentController.verifyPaymentId);
+router.post(
+  '/verify-payment-id',
+  rateLimiter,
+  paymentController.verifyPaymentId
+);
 
 /**
  * @swagger
@@ -622,7 +652,11 @@ router.post('/verify-payment-id', rateLimiter, paymentController.verifyPaymentId
  *       201:
  *         description: Organizer order created successfully
  */
-router.post('/create-organizer-order', rateLimiter, paymentController.createOrganizerOrder);
+router.post(
+  '/create-organizer-order',
+  rateLimiter,
+  paymentController.createOrganizerOrder
+);
 
 /**
  * @swagger
@@ -666,6 +700,10 @@ router.post('/create-organizer-order', rateLimiter, paymentController.createOrga
  *       200:
  *         description: Organizer payment verified successfully
  */
-router.post('/verify-organizer-payment', rateLimiter, paymentController.verifyOrganizerPayment);
+router.post(
+  '/verify-organizer-payment',
+  rateLimiter,
+  paymentController.verifyOrganizerPayment
+);
 
 export default router;

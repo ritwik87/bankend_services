@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import duprController from '../controllers/duprController';
 import { duprApiLimiter } from '../middleware/rateLimiter';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+// Apply authentication to all DUPR routes
+router.use(requireAuth);
 
 // Apply rate limiting to all DUPR routes
 router.use(duprApiLimiter);
