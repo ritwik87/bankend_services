@@ -1,8 +1,12 @@
 import express from 'express';
 import { userController } from '../controllers/userController';
 import { duprApiLimiter } from '../middleware/rateLimiter';
+import { requireAuth } from '../middleware/auth';
 
 const router = express.Router();
+
+// Apply authentication to all user routes
+router.use(requireAuth);
 
 // Apply rate limiting to all user routes
 router.use(duprApiLimiter);

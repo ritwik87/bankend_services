@@ -6,6 +6,8 @@
 
 import { Router } from 'express';
 import { AuctionController } from '../controllers/auctionController';
+import { canManageAuctions, canReadAuctions } from '../middleware/auctionAuth';
+import { requireAuth } from '../middleware/auth';
 import { createRateLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
@@ -259,8 +261,9 @@ router.get(
 // Player Auction Routes (Admin/Organizer/Team Owner-Captain)
 router.post(
   '/players/complete',
+  requireAuth,
   auctionRateLimit,
-  //   canManageAuctions,
+  canManageAuctions,
   AuctionController.completePlayerAuction
 );
 
@@ -281,14 +284,16 @@ router.get(
 // Settings Routes (Admin/Organizer/Team Owner-Captain)
 router.get(
   '/auctions/:id/settings',
+  requireAuth,
   auctionRateLimit,
-  //   canReadAuctions,
+  canReadAuctions,
   AuctionController.getAuctionSettings
 );
 router.post(
   '/settings',
+  requireAuth,
   auctionRateLimit,
-  //   canManageAuctions,
+  canManageAuctions,
   AuctionController.upsertAuctionSettings
 );
 
