@@ -1,12 +1,12 @@
 /**
  * Auction Authorization Middleware
- * 
+ *
  * Handles role-based access control for auction management endpoints
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { supabase } from '../utils/supabase';
+import { NextFunction, Request, Response } from 'express';
 import logger from '../utils/logger';
+import { supabase } from '../utils/supabase';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -19,7 +19,10 @@ interface AuthenticatedRequest extends Request {
 // Extract user from Authorization header
 const extractUserFromToken = async (token: string) => {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
     if (error || !user) throw error;
 
     // Get user profile with role
@@ -34,7 +37,7 @@ const extractUserFromToken = async (token: string) => {
     return {
       id: user.id,
       email: user.email,
-      role: profile.role
+      role: profile.role,
     };
   } catch (error) {
     return null;
@@ -81,13 +84,17 @@ const checkOrganizerAccess = async (userId: string, leagueId: string) => {
 };
 
 // Main authentication middleware
-export const authenticateUser = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const authenticateUser = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,
-        error: 'Authorization token required'
+        error: 'Authorization token required',
       });
       return;
     }
@@ -98,7 +105,7 @@ export const authenticateUser = async (req: AuthenticatedRequest, res: Response,
     if (!user) {
       res.status(401).json({
         success: false,
-        error: 'Invalid or expired token'
+        error: 'Invalid or expired token',
       });
       return;
     }
@@ -109,17 +116,21 @@ export const authenticateUser = async (req: AuthenticatedRequest, res: Response,
     logger.error('Authentication error:', error);
     res.status(401).json({
       success: false,
-      error: 'Authentication failed'
+      error: 'Authentication failed',
     });
   }
 };
 
 // Admin only access
-export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+export const requireAdmin = (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): void => {
   if (req.user?.role !== 'admin') {
     res.status(403).json({
       success: false,
-      error: 'Admin access required'
+      error: 'Admin access required',
     });
     return;
   }
@@ -127,12 +138,16 @@ export const requireAdmin = (req: AuthenticatedRequest, res: Response, next: Nex
 };
 
 // Admin or Organizer access
-export const requireAdminOrOrganizer = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+export const requireAdminOrOrganizer = (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): void => {
   const role = req.user?.role;
   if (role !== 'admin' && role !== 'organizer') {
     res.status(403).json({
       success: false,
-      error: 'Admin or organizer access required'
+      error: 'Admin or organizer access required',
     });
     return;
   }
@@ -140,8 +155,14 @@ export const requireAdminOrOrganizer = (req: AuthenticatedRequest, res: Response
 };
 
 // Check auction access (admin, organizer of league, or team owner/captain)
-export const checkAuctionAccess = (action: 'read' | 'write' | 'bid' | 'manage') => {
-  return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const checkAuctionAccess = (
+  action: 'read' | 'write' | 'bid' | 'manage'
+) => {
+  return async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ) => {
     try {
       const userId = req.user?.id;
       const role = req.user?.role;
@@ -149,7 +170,7 @@ export const checkAuctionAccess = (action: 'read' | 'write' | 'bid' | 'manage') 
       if (!userId) {
         return res.status(401).json({
           success: false,
-          error: 'Authentication required'
+          error: 'Authentication required',
         });
       }
 
@@ -159,7 +180,8 @@ export const checkAuctionAccess = (action: 'read' | 'write' | 'bid' | 'manage') 
       }
 
       // Get auction details to check league
-      const auctionId = req.params.auctionId || req.params.id;
+      const auctionId =
+        req.params.auctionId || req.body.auction_id || req.params.id;
       let leagueId: string | undefined;
 
       if (auctionId) {
@@ -191,11 +213,20 @@ export const checkAuctionAccess = (action: 'read' | 'write' | 'bid' | 'manage') 
       const userTeams = await getUserTeamAccess(userId, leagueId);
       if (userTeams.length > 0) {
         // Team owners/captains can bid and manage their teams
-        if (action === 'bid' || (action === 'write' && req.body?.teamId && userTeams.some((t: any) => t.id === req.body.teamId))) {
+        if (
+          action === 'bid' ||
+          (action === 'write' &&
+            req.body?.teamId &&
+            userTeams.some((t: any) => t.id === req.body.teamId))
+        ) {
           return next();
         }
         // Can manage auctions in their league
-        if (action === 'manage' && leagueId && userTeams.some((t: any) => t.league_id === leagueId)) {
+        if (
+          action === 'manage' &&
+          leagueId &&
+          userTeams.some((t: any) => t.league_id === leagueId)
+        ) {
           return next();
         }
       }
@@ -205,19 +236,18 @@ export const checkAuctionAccess = (action: 'read' | 'write' | 'bid' | 'manage') 
         read: 'view auctions',
         write: 'modify auctions',
         bid: 'place bids',
-        manage: 'manage auctions'
+        manage: 'manage auctions',
       };
 
       res.status(403).json({
         success: false,
-        error: `You don't have permission to ${actionMessages[action]}. Contact an admin if you need access.`
+        error: `You don't have permission to ${actionMessages[action]}. Contact an admin if you need access.`,
       });
-
     } catch (error) {
       logger.error('checkAuctionAccess error:', error);
       res.status(500).json({
         success: false,
-        error: 'Authorization check failed'
+        error: 'Authorization check failed',
       });
     }
   };
@@ -230,7 +260,11 @@ export const canPlaceBids = checkAuctionAccess('bid');
 export const canManageAuctions = checkAuctionAccess('manage');
 
 // Team-specific bid authorization
-export const checkBidPermission = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const checkBidPermission = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const userId = req.user?.id;
     const role = req.user?.role;
@@ -239,7 +273,7 @@ export const checkBidPermission = async (req: AuthenticatedRequest, res: Respons
     if (!userId || !teamId) {
       return res.status(400).json({
         success: false,
-        error: 'User ID and team ID required'
+        error: 'User ID and team ID required',
       });
     }
 
@@ -258,19 +292,20 @@ export const checkBidPermission = async (req: AuthenticatedRequest, res: Respons
     if (error || !team) {
       return res.status(404).json({
         success: false,
-        error: 'Team not found'
+        error: 'Team not found',
       });
     }
 
     const canBid = team.owner_id === userId || team.captain_id === userId;
-    
+
     if (!canBid) {
       // Check if user is organizer of the league
       const isOrganizer = await checkOrganizerAccess(userId, team.league_id);
       if (!isOrganizer) {
         return res.status(403).json({
           success: false,
-          error: 'You can only place bids for teams where you are the owner or captain'
+          error:
+            'You can only place bids for teams where you are the owner or captain',
         });
       }
     }
@@ -280,7 +315,7 @@ export const checkBidPermission = async (req: AuthenticatedRequest, res: Respons
     logger.error('checkBidPermission error:', error);
     res.status(500).json({
       success: false,
-      error: 'Bid permission check failed'
+      error: 'Bid permission check failed',
     });
   }
 };
@@ -293,5 +328,5 @@ export default {
   canWriteAuctions,
   canPlaceBids,
   canManageAuctions,
-  checkBidPermission
+  checkBidPermission,
 };
