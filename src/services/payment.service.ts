@@ -978,16 +978,16 @@ export class PaymentService {
       const data: any = await response.json();
 
       // Filter refunds by entity ID (check notes)
-      const filteredRefunds =
-        data.items?.filter((refund: any) => {
-          const notes = refund.notes || {};
+      const filteredRefunds = data.items;
+      //   ?.filter((refund: any) => {
+      //   const notes = refund.notes || {};
 
-          return (
-            notes[`${context.type}_id`] === context.id ||
-            notes.entity_id === context.id ||
-            notes.entity_type === context.type
-          );
-        }) || [];
+      //   return (
+      //     notes[`${context.type}_id`] === context.id ||
+      //     notes.entity_id === context.id ||
+      //     notes.entity_type === context.type
+      //   );
+      // }) || [];
 
       return {
         success: true,
@@ -1072,6 +1072,16 @@ export class PaymentService {
         const totalFee = razorpayFee + gst;
         const netAmount = amountInRupees - totalFee;
 
+        // Check if payment has been refunded
+        const amountRefunded = payment.amount_refunded || 0;
+        const isRefunded = amountRefunded > 0;
+        const refundStatus = payment.refund_status; // Can be null, 'partial', or 'full'
+
+        // Find matching refund for this payment
+        const paymentRefunds = refunds.filter(
+          (refund: any) => refund.payment_id === payment.id
+        );
+
         return {
           payment_id: payment.id,
           created_date: payment.created_at
@@ -1084,6 +1094,17 @@ export class PaymentService {
           net_amount: netAmount,
           status: payment.status,
           currency: 'INR',
+          // Refund information
+          is_refunded: isRefunded,
+          refund_status: refundStatus,
+          amount_refunded: amountRefunded / 100, // Convert to rupees
+          refunds: paymentRefunds.map((refund: any) => ({
+            refund_id: refund.id,
+            amount: refund.amount / 100, // Convert to rupees
+            status: refund.status,
+            created_at: refund.created_at,
+            speed_processed: refund.speed_processed,
+          })),
         };
       });
 
