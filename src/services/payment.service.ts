@@ -5,6 +5,11 @@ import {
   CreateOrderResponse,
   CreatePaymentLinkRequest,
   CreatePaymentLinkResponse,
+  CreateRefundRequest,
+  CreateRefundResponse,
+  FetchMultipleRefundsRequest,
+  FetchRefundRequest,
+  FetchRefundResponse,
   RazorpayCredentials,
   VerifyPaymentRequest,
   VerifyPaymentResponse,
@@ -1779,6 +1784,307 @@ export class PaymentService {
         error:
           error instanceof Error ? error.message : 'Unknown error occurred',
       };
+    }
+  }
+
+  /**
+   * Create a refund for a payment
+   */
+  async createRefund(
+    refundData: CreateRefundRequest
+  ): Promise<CreateRefundResponse> {
+    try {
+      const { context, payment_id, amount, speed, notes, receipt } = refundData;
+
+      // Fetch credentials from database using context
+      const credentials = await this.fetchCredentials(context);
+
+      if (!credentials) {
+        return {
+          success: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
+      }
+
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      // Fetch payment details to verify payment exists
+      const paymentDetails = await this.fetchPaymentDetails(
+        payment_id,
+        credentials
+      );
+
+      if (!paymentDetails) {
+        return {
+          success: false,
+          error: 'Payment not found',
+        };
+      }
+
+      // Check if payment is refundable
+      if (
+        paymentDetails.status !== 'captured' &&
+        paymentDetails.status !== 'authorized'
+      ) {
+        return {
+          success: false,
+          error: `Payment cannot be refunded. Status: ${paymentDetails.status}`,
+        };
+      }
+
+      // Build refund request body
+      // For FULL refund: send empty body {}
+      // For PARTIAL refund: send { amount: <partial_amount> }
+      const refundBody: any = {};
+
+      // Only add amount for partial refunds
+      if (amount && amount < paymentDetails.amount) {
+        refundBody.amount = amount;
+      }
+      // For full refund, don't include amount field at all
+
+      // Speed parameter (normal or optimum) - only add if explicitly provided
+      if (speed) {
+        refundBody.speed = speed;
+      }
+
+      // Notes for tracking - only add if provided
+      if (notes && Object.keys(notes).length > 0) {
+        refundBody.notes = {
+          ...notes,
+          entity_type: context.type,
+          entity_id: context.id,
+        };
+      }
+
+      // Receipt for reference
+      if (receipt) {
+        refundBody.receipt = receipt;
+      }
+
+      logger.info('Creating refund with request:', {
+        payment_id,
+        payment_amount: paymentDetails.amount,
+        refund_amount: amount || 'full',
+        is_partial: amount && amount < paymentDetails.amount,
+        body: refundBody,
+      });
+
+      const response = await fetch(
+        `https://api.razorpay.com/v1/payments/${payment_id}/refund`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(refundBody),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData: any = await response.json();
+        logger.error('Failed to create refund:', errorData);
+        return {
+          success: false,
+          error: errorData.error?.description || 'Failed to create refund',
+        };
+      }
+
+      const refund: any = await response.json();
+
+      logger.info('Refund created successfully:', {
+        refundId: refund.id,
+        paymentId: payment_id,
+        amount: refund.amount,
+      });
+
+      // Update registration status to reflect refund
+      try {
+        await this.updateRegistrationAfterRefund(payment_id, context);
+      } catch (updateError) {
+        logger.error('Error updating registration after refund:', updateError);
+        // Don't fail the refund creation if registration update fails
+      }
+
+      return {
+        success: true,
+        refund,
+      };
+    } catch (error) {
+      logger.error('Error creating refund:', error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Fetch a specific refund by ID
+   */
+  async fetchRefund(
+    refundRequest: FetchRefundRequest
+  ): Promise<FetchRefundResponse> {
+    try {
+      const { refund_id, context } = refundRequest;
+
+      const credentials = await this.fetchCredentials(context);
+
+      if (!credentials) {
+        return {
+          success: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
+      }
+
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      const response = await fetch(
+        `https://api.razorpay.com/v1/refunds/${refund_id}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData: any = await response.json();
+        logger.error('Failed to fetch refund:', errorData);
+        return {
+          success: false,
+          error: errorData.error?.description || 'Failed to fetch refund',
+        };
+      }
+
+      const refund: any = await response.json();
+
+      return {
+        success: true,
+        refund,
+      };
+    } catch (error) {
+      logger.error('Error fetching refund:', error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Fetch multiple refunds for a payment
+   */
+  async fetchMultipleRefundsForPayment(
+    refundsRequest: FetchMultipleRefundsRequest
+  ): Promise<any> {
+    try {
+      const { payment_id, context, count, skip, from, to } = refundsRequest;
+
+      const credentials = await this.fetchCredentials(context);
+
+      if (!credentials) {
+        return {
+          success: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
+      }
+
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      // Build query parameters
+      const queryParams = new URLSearchParams();
+      if (count) queryParams.append('count', count.toString());
+      if (skip) queryParams.append('skip', skip.toString());
+      if (from) queryParams.append('from', from.toString());
+      if (to) queryParams.append('to', to.toString());
+
+      const response = await fetch(
+        `https://api.razorpay.com/v1/payments/${payment_id}/refunds?${queryParams}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData: any = await response.json();
+        logger.error('Failed to fetch refunds for payment:', errorData);
+        return {
+          success: false,
+          error:
+            errorData.error?.description ||
+            'Failed to fetch refunds for payment',
+        };
+      }
+
+      const data: any = await response.json();
+
+      return {
+        success: true,
+        items: data.items || [],
+        count: data.count,
+      };
+    } catch (error) {
+      logger.error('Error fetching refunds for payment:', error);
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Update registration status after refund
+   */
+  private async updateRegistrationAfterRefund(
+    paymentId: string,
+    context: {
+      type: 'tournament' | 'league';
+      id: string;
+    }
+  ): Promise<void> {
+    try {
+      const tableName =
+        context.type === 'tournament'
+          ? 'tournament_registrations'
+          : 'league_registrations';
+
+      // Update registration status to 'refunded'
+      const { error } = await supabase
+        .from(tableName)
+        .update({
+          payment_status: 'refunded',
+          status: 'cancelled',
+        })
+        .eq('payment_id', paymentId);
+
+      if (error) {
+        logger.error(`Failed to update ${tableName} after refund:`, error);
+        throw error;
+      }
+
+      logger.info(
+        `Updated ${tableName} status to refunded for payment ${paymentId}`
+      );
+    } catch (error) {
+      logger.error('Error updating registration after refund:', error);
+      throw error;
     }
   }
 }

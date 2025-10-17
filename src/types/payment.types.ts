@@ -113,3 +113,61 @@ export interface CreatePaymentLinkResponse {
   };
   error?: string;
 }
+
+export interface CreateRefundRequest {
+  payment_id: string; // Payment ID to refund
+  amount?: number; // Amount to refund in paisa (optional for full refund)
+  speed?: 'normal' | 'optimum'; // Refund speed (normal or optimum)
+  notes?: Record<string, string>;
+  receipt?: string;
+  context: {
+    type: 'tournament' | 'league';
+    id: string;
+  };
+}
+
+export interface CreateRefundResponse {
+  success: boolean;
+  refund?: {
+    id: string;
+    entity: string;
+    amount: number;
+    currency: string;
+    payment_id: string;
+    notes?: Record<string, string>;
+    receipt?: string | null;
+    acquirer_data?: any;
+    created_at: number;
+    batch_id?: string | null;
+    status: string;
+    speed_processed: string;
+    speed_requested: string;
+  };
+  error?: string;
+}
+
+export interface FetchRefundRequest {
+  refund_id: string;
+  context: {
+    type: 'tournament' | 'league';
+    id: string;
+  };
+}
+
+export interface FetchRefundResponse {
+  success: boolean;
+  refund?: any;
+  error?: string;
+}
+
+export interface FetchMultipleRefundsRequest {
+  payment_id: string; // Fetch refunds for a specific payment
+  context: {
+    type: 'tournament' | 'league';
+    id: string;
+  };
+  count?: number;
+  skip?: number;
+  from?: number;
+  to?: number;
+}

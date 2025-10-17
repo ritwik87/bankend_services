@@ -4,7 +4,10 @@ import {
   CreateOrderRequest,
   CreatePaymentLinkRequest,
   VerifyPaymentRequest,
-  PaymentContext
+  PaymentContext,
+  CreateRefundRequest,
+  FetchRefundRequest,
+  FetchMultipleRefundsRequest
 } from '../types/payment.types';
 import logger from '../utils/logger';
 import Joi from 'joi';
@@ -99,6 +102,38 @@ const fetchTransactionsSchema = Joi.object({
 
 const organizerTransactionsSchema = Joi.object({
   organizerId: Joi.string().required()
+});
+
+const createRefundSchema = Joi.object({
+  payment_id: Joi.string().required(),
+  amount: Joi.number().integer().min(1).optional(),
+  speed: Joi.string().valid('normal', 'optimum').optional(), // Made optional, not default
+  notes: Joi.object().optional(),
+  receipt: Joi.string().max(40).optional(),
+  context: Joi.object({
+    type: Joi.string().valid('tournament', 'league').required(),
+    id: Joi.string().required()
+  }).required()
+});
+
+const fetchRefundSchema = Joi.object({
+  refund_id: Joi.string().required(),
+  context: Joi.object({
+    type: Joi.string().valid('tournament', 'league').required(),
+    id: Joi.string().required()
+  }).required()
+});
+
+const fetchMultipleRefundsSchema = Joi.object({
+  payment_id: Joi.string().required(),
+  context: Joi.object({
+    type: Joi.string().valid('tournament', 'league').required(),
+    id: Joi.string().required()
+  }).required(),
+  count: Joi.number().integer().min(1).max(100).default(10),
+  skip: Joi.number().integer().min(0).default(0),
+  from: Joi.number().integer().optional(),
+  to: Joi.number().integer().optional()
 });
 
 export class PaymentController {
@@ -649,6 +684,124 @@ export class PaymentController {
         success: false,
         verified: false,
         error: 'Internal server error',
+      });
+    }
+  }
+
+  /**
+   * Create a refund for a payment (Admin only)
+   */
+  async createRefund(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = createRefundSchema.validate(req.body);
+
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const refundData: CreateRefundRequest = value;
+
+      logger.info('Creating refund:', {
+        payment_id: refundData.payment_id,
+        amount: refundData.amount,
+        context: refundData.context
+      });
+
+      const result = await paymentService.createRefund(refundData);
+
+      if (result.success) {
+        res.status(201).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in createRefund controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Fetch a specific refund by ID (Admin only)
+   */
+  async fetchRefund(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = fetchRefundSchema.validate(req.body);
+
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const refundRequest: FetchRefundRequest = value;
+
+      logger.info('Fetching refund:', {
+        refund_id: refundRequest.refund_id,
+        context: refundRequest.context
+      });
+
+      const result = await paymentService.fetchRefund(refundRequest);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in fetchRefund controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Fetch multiple refunds for a payment (Admin only)
+   */
+  async fetchMultipleRefundsForPayment(req: Request, res: Response): Promise<void> {
+    try {
+      const { error, value } = fetchMultipleRefundsSchema.validate(req.body);
+
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: error.details[0].message
+        });
+        return;
+      }
+
+      const refundsRequest: FetchMultipleRefundsRequest = value;
+
+      logger.info('Fetching refunds for payment:', {
+        payment_id: refundsRequest.payment_id,
+        context: refundsRequest.context
+      });
+
+      const result = await paymentService.fetchMultipleRefundsForPayment(refundsRequest);
+
+      if (result.success) {
+        res.status(200).json(result);
+      } else {
+        res.status(400).json(result);
+      }
+
+    } catch (error) {
+      logger.error('Error in fetchMultipleRefundsForPayment controller:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
       });
     }
   }
