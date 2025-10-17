@@ -706,4 +706,177 @@ router.post(
   paymentController.verifyOrganizerPayment
 );
 
+/**
+ * @swagger
+ * /api/payment/create-refund:
+ *   post:
+ *     summary: Create a refund for a payment (Admin only)
+ *     tags: [Refunds]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payment_id
+ *               - context
+ *             properties:
+ *               payment_id:
+ *                 type: string
+ *                 description: Payment ID to refund
+ *                 example: pay_1234567890
+ *               amount:
+ *                 type: number
+ *                 description: Amount to refund in paisa (optional for full refund)
+ *                 example: 50000
+ *               speed:
+ *                 type: string
+ *                 enum: [normal, optimum]
+ *                 default: normal
+ *                 description: Refund processing speed
+ *               notes:
+ *                 type: object
+ *                 additionalProperties:
+ *                   type: string
+ *               receipt:
+ *                 type: string
+ *                 maxLength: 40
+ *               context:
+ *                 type: object
+ *                 required:
+ *                   - type
+ *                   - id
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [tournament, league]
+ *                   id:
+ *                     type: string
+ *     responses:
+ *       201:
+ *         description: Refund created successfully
+ *       400:
+ *         description: Bad request
+ *       403:
+ *         description: Forbidden - Admin only
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  '/create-refund',
+  rateLimiter,
+  requireAdmin,
+  paymentController.createRefund
+);
+
+/**
+ * @swagger
+ * /api/payment/fetch-refund:
+ *   post:
+ *     summary: Fetch a specific refund by ID (Admin only)
+ *     tags: [Refunds]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refund_id
+ *               - context
+ *             properties:
+ *               refund_id:
+ *                 type: string
+ *                 example: rfnd_1234567890
+ *               context:
+ *                 type: object
+ *                 required:
+ *                   - type
+ *                   - id
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [tournament, league]
+ *                   id:
+ *                     type: string
+ *     responses:
+ *       200:
+ *         description: Refund details fetched successfully
+ *       400:
+ *         description: Bad request
+ *       403:
+ *         description: Forbidden - Admin only
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  '/fetch-refund',
+  rateLimiter,
+  requireAdmin,
+  paymentController.fetchRefund
+);
+
+/**
+ * @swagger
+ * /api/payment/fetch-payment-refunds:
+ *   post:
+ *     summary: Fetch multiple refunds for a payment (Admin only)
+ *     tags: [Refunds]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payment_id
+ *               - context
+ *             properties:
+ *               payment_id:
+ *                 type: string
+ *                 example: pay_1234567890
+ *               context:
+ *                 type: object
+ *                 required:
+ *                   - type
+ *                   - id
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                     enum: [tournament, league]
+ *                   id:
+ *                     type: string
+ *               count:
+ *                 type: number
+ *                 minimum: 1
+ *                 maximum: 100
+ *                 default: 10
+ *               skip:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *               from:
+ *                 type: number
+ *                 description: Unix timestamp
+ *               to:
+ *                 type: number
+ *                 description: Unix timestamp
+ *     responses:
+ *       200:
+ *         description: Refunds fetched successfully
+ *       400:
+ *         description: Bad request
+ *       403:
+ *         description: Forbidden - Admin only
+ *       500:
+ *         description: Internal server error
+ */
+router.post(
+  '/fetch-payment-refunds',
+  rateLimiter,
+  requireAdmin,
+  paymentController.fetchMultipleRefundsForPayment
+);
+
 export default router;
