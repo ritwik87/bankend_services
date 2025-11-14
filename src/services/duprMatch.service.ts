@@ -209,6 +209,40 @@ class DuprMatchService {
   }
 
   /**
+   * Get match information from DUPR by match ID
+   */
+  async getMatchInfo(matchId: string): Promise<any> {
+    try {
+      const response = await duprAuthService.makeAuthenticatedRequest(
+        `/match/${this.apiVersion}/${matchId}`,
+        'GET'
+      );
+
+      logger.info('DUPR match info retrieved successfully', {
+        matchId
+      });
+
+      return {
+        success: true,
+        data: response.data,
+        message: 'Match information retrieved successfully'
+      };
+
+    } catch (error: any) {
+      logger.error('DUPR match info retrieval failed', {
+        matchId,
+        error: error.message
+      });
+
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message || 'Failed to retrieve match info',
+        message: 'Failed to retrieve match information from DUPR'
+      };
+    }
+  }
+
+  /**
    * Validate match data before sending to DUPR
    */
   private validateMatchData(matchData: DuprMatchUploadRequest): void {
