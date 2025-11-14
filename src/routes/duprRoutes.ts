@@ -421,6 +421,140 @@ router.post('/upload-matches', duprController.uploadMatches);
 
 /**
  * @swagger
+ * /api/dupr/update-match/{matchId}:
+ *   put:
+ *     tags:
+ *       - DUPR Match Management
+ *     summary: Update Match Result in DUPR
+ *     description: Update an existing match result in DUPR system
+ *     parameters:
+ *       - name: matchId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: DUPR Match ID to update
+ *         example: "123456"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/DuprMatchUploadRequest'
+ *     responses:
+ *       200:
+ *         description: Match updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       $ref: '#/components/schemas/DuprMatchUploadResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.put('/update-match/:matchId', duprController.updateMatch);
+
+/**
+ * @swagger
+ * /api/dupr/delete-match:
+ *   delete:
+ *     tags:
+ *       - DUPR Match Management
+ *     summary: Delete Match from DUPR
+ *     description: Delete a match result from DUPR system
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               matchCode:
+ *                 type: string
+ *                 description: DUPR match code to delete
+ *                 example: "ABC123"
+ *               identifier:
+ *                 type: string
+ *                 description: Unique identifier of the match
+ *                 example: "match-123-1234567890"
+ *             required:
+ *               - matchCode
+ *               - identifier
+ *     responses:
+ *       200:
+ *         description: Match deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       $ref: '#/components/schemas/DuprMatchUploadResponse'
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.delete('/delete-match', duprController.deleteMatch);
+
+/**
+ * @swagger
+ * /api/dupr/match/{matchId}:
+ *   get:
+ *     tags:
+ *       - DUPR Match Management
+ *     summary: Get Match Information
+ *     description: Retrieve detailed information about a specific match from DUPR
+ *     parameters:
+ *       - name: matchId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: DUPR Match ID to retrieve
+ *         example: "123456"
+ *     responses:
+ *       200:
+ *         description: Match information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       type: object
+ *                       description: Match details from DUPR
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.get('/match/:matchId', duprController.getMatchInfo);
+
+/**
+ * @swagger
  * /api/dupr/health:
  *   get:
  *     tags:

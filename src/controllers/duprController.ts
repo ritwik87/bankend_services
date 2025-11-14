@@ -280,6 +280,160 @@ export class DuprController {
       res.status(500).json(response);
     }
   }
+
+  async updateMatch(req: Request, res: Response): Promise<void> {
+    try {
+      const { matchId } = req.params;
+      const matchData: DuprMatchUploadRequest = req.body;
+
+      if (!matchId) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Match ID is required',
+          message: 'Please provide a valid match ID'
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      // Validate required fields
+      if (!matchData.event || !matchData.identifier || !matchData.matchDate || !matchData.teamA || !matchData.teamB) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Missing required fields',
+          message: 'Event, identifier, matchDate, teamA, and teamB are required'
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const updateResponse = await duprMatchService.updateMatch(parseInt(matchId), matchData);
+
+      if (updateResponse.success) {
+        const response: ApiResponse<DuprMatchUploadResponse> = {
+          success: true,
+          data: updateResponse,
+          message: 'Match updated successfully in DUPR'
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: updateResponse.error || 'Update failed',
+          message: updateResponse.message || 'Failed to update match in DUPR'
+        };
+
+        res.status(400).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Update match controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to update match'
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async deleteMatch(req: Request, res: Response): Promise<void> {
+    try {
+      const { matchCode, identifier } = req.body;
+
+      if (!matchCode || !identifier) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Missing required fields',
+          message: 'matchCode and identifier are required'
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const deleteResponse = await duprMatchService.deleteMatch(matchCode, identifier);
+
+      if (deleteResponse.success) {
+        const response: ApiResponse<DuprMatchUploadResponse> = {
+          success: true,
+          data: deleteResponse,
+          message: 'Match deleted successfully from DUPR'
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: deleteResponse.error || 'Deletion failed',
+          message: deleteResponse.message || 'Failed to delete match from DUPR'
+        };
+
+        res.status(400).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Delete match controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to delete match'
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async getMatchInfo(req: Request, res: Response): Promise<void> {
+    try {
+      const { matchId } = req.params;
+
+      if (!matchId) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Match ID is required',
+          message: 'Please provide a valid match ID'
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const matchInfo = await duprMatchService.getMatchInfo(matchId);
+
+      if (matchInfo.success) {
+        const response: ApiResponse<any> = {
+          success: true,
+          data: matchInfo.data,
+          message: 'Match information retrieved successfully'
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: matchInfo.error || 'Failed to retrieve match info',
+          message: matchInfo.message || 'Failed to retrieve match information from DUPR'
+        };
+
+        res.status(404).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Get match info controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to retrieve match information'
+      };
+
+      res.status(500).json(response);
+    }
+  }
 }
 
 export default new DuprController();
