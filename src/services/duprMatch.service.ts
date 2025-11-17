@@ -1,6 +1,10 @@
-import { DuprMatchUploadRequest, DuprMatchUploadResponse, DuprBatchUploadResponse } from '../types/dupr.types';
-import duprAuthService from './duprAuth.service';
+import {
+  DuprBatchUploadResponse,
+  DuprMatchUploadRequest,
+  DuprMatchUploadResponse,
+} from '../types/dupr.types';
 import logger from '../utils/logger';
+import duprAuthService from './duprAuth.service';
 
 class DuprMatchService {
   private readonly apiVersion = 'v1.0';
@@ -8,7 +12,9 @@ class DuprMatchService {
   /**
    * Upload a single match to DUPR
    */
-  async uploadMatch(matchData: DuprMatchUploadRequest): Promise<DuprMatchUploadResponse> {
+  async uploadMatch(
+    matchData: DuprMatchUploadRequest
+  ): Promise<DuprMatchUploadResponse> {
     try {
       // Validate match data
       this.validateMatchData(matchData);
@@ -22,27 +28,26 @@ class DuprMatchService {
 
       logger.info('DUPR match upload successful', {
         identifier: matchData.identifier,
-        matchId: response.data?.matchId
+        matchCode: response.data?.result?.matchCode,
       });
 
       return {
         success: true,
-        matchId: response.data?.matchId,
-        matchCode: response.data?.matchCode,
-        message: 'Match uploaded successfully to DUPR'
+        matchCode: response.data?.result?.matchCode,
+        message: 'Match uploaded successfully to DUPR',
       };
-
     } catch (error: any) {
       logger.error('DUPR match upload failed', {
         identifier: matchData.identifier,
         error: error.message,
-        response: error.response?.data
+        response: error.response?.data,
       });
 
       return {
         success: false,
-        error: error.response?.data?.message || error.message || 'Upload failed',
-        message: 'Failed to upload match to DUPR'
+        error:
+          error.response?.data?.message || error.message || 'Upload failed',
+        message: 'Failed to upload match to DUPR',
       };
     }
   }
@@ -50,10 +55,12 @@ class DuprMatchService {
   /**
    * Upload multiple matches to DUPR in batch
    */
-  async uploadMatches(matches: DuprMatchUploadRequest[]): Promise<DuprBatchUploadResponse> {
+  async uploadMatches(
+    matches: DuprMatchUploadRequest[]
+  ): Promise<DuprBatchUploadResponse> {
     try {
       // Validate all matches
-      matches.forEach(match => this.validateMatchData(match));
+      matches.forEach((match) => this.validateMatchData(match));
 
       // Make authenticated request to DUPR batch endpoint
       const response = await duprAuthService.makeAuthenticatedRequest(
@@ -74,7 +81,7 @@ class DuprMatchService {
             matchId: result?.matchId,
             matchCode: result?.matchCode,
             message: result?.matchId ? 'Success' : 'Failed',
-            error: result?.error
+            error: result?.error,
           });
         }
       } else {
@@ -83,44 +90,46 @@ class DuprMatchService {
           results.push({
             success: true,
             matchId: `batch-${index}`,
-            message: 'Batch upload successful'
+            message: 'Batch upload successful',
           });
         });
       }
 
-      const successful = results.filter(r => r.success).length;
+      const successful = results.filter((r) => r.success).length;
       const failed = results.length - successful;
 
       logger.info('DUPR batch upload completed', {
         total: matches.length,
         successful,
-        failed
+        failed,
       });
 
       return {
         successful,
         failed,
-        results
+        results,
       };
-
     } catch (error: any) {
       logger.error('DUPR batch upload failed', {
         matchCount: matches.length,
         error: error.message,
-        response: error.response?.data
+        response: error.response?.data,
       });
 
       // Return failed results for all matches
       const results: DuprMatchUploadResponse[] = matches.map((match) => ({
         success: false,
-        error: error.response?.data?.message || error.message || 'Batch upload failed',
-        message: 'Failed to upload match in batch'
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          'Batch upload failed',
+        message: 'Failed to upload match in batch',
       }));
 
       return {
         successful: 0,
         failed: matches.length,
-        results
+        results,
       };
     }
   }
@@ -128,11 +137,14 @@ class DuprMatchService {
   /**
    * Update an existing match in DUPR
    */
-  async updateMatch(matchId: number, matchData: DuprMatchUploadRequest): Promise<DuprMatchUploadResponse> {
+  async updateMatch(
+    matchId: number,
+    matchData: DuprMatchUploadRequest
+  ): Promise<DuprMatchUploadResponse> {
     try {
       const updateData = {
         ...matchData,
-        matchId
+        matchId,
       };
 
       const response = await duprAuthService.makeAuthenticatedRequest(
@@ -143,26 +155,26 @@ class DuprMatchService {
 
       logger.info('DUPR match update successful', {
         matchId,
-        identifier: matchData.identifier
+        identifier: matchData.identifier,
       });
 
       return {
         success: true,
         matchId: matchId.toString(),
-        message: 'Match updated successfully in DUPR'
+        message: 'Match updated successfully in DUPR',
       };
-
     } catch (error: any) {
       logger.error('DUPR match update failed', {
         matchId,
         identifier: matchData.identifier,
-        error: error.message
+        error: error.message,
       });
 
       return {
         success: false,
-        error: error.response?.data?.message || error.message || 'Update failed',
-        message: 'Failed to update match in DUPR'
+        error:
+          error.response?.data?.message || error.message || 'Update failed',
+        message: 'Failed to update match in DUPR',
       };
     }
   }
@@ -170,11 +182,14 @@ class DuprMatchService {
   /**
    * Delete a match from DUPR
    */
-  async deleteMatch(matchCode: string, identifier: string): Promise<DuprMatchUploadResponse> {
+  async deleteMatch(
+    matchCode: string,
+    identifier: string
+  ): Promise<DuprMatchUploadResponse> {
     try {
       const deleteData = {
         matchCode,
-        identifier
+        identifier,
       };
 
       await duprAuthService.makeAuthenticatedRequest(
@@ -185,25 +200,25 @@ class DuprMatchService {
 
       logger.info('DUPR match deletion successful', {
         matchCode,
-        identifier
+        identifier,
       });
 
       return {
         success: true,
-        message: 'Match deleted successfully from DUPR'
+        message: 'Match deleted successfully from DUPR',
       };
-
     } catch (error: any) {
       logger.error('DUPR match deletion failed', {
         matchCode,
         identifier,
-        error: error.message
+        error: error.message,
       });
 
       return {
         success: false,
-        error: error.response?.data?.message || error.message || 'Deletion failed',
-        message: 'Failed to delete match from DUPR'
+        error:
+          error.response?.data?.message || error.message || 'Deletion failed',
+        message: 'Failed to delete match from DUPR',
       };
     }
   }
@@ -219,25 +234,27 @@ class DuprMatchService {
       );
 
       logger.info('DUPR match info retrieved successfully', {
-        matchId
+        matchId,
       });
 
       return {
         success: true,
         data: response.data,
-        message: 'Match information retrieved successfully'
+        message: 'Match information retrieved successfully',
       };
-
     } catch (error: any) {
       logger.error('DUPR match info retrieval failed', {
         matchId,
-        error: error.message
+        error: error.message,
       });
 
       return {
         success: false,
-        error: error.response?.data?.message || error.message || 'Failed to retrieve match info',
-        message: 'Failed to retrieve match information from DUPR'
+        error:
+          error.response?.data?.message ||
+          error.message ||
+          'Failed to retrieve match info',
+        message: 'Failed to retrieve match information from DUPR',
       };
     }
   }
@@ -259,7 +276,8 @@ class DuprMatchService {
     // Team validation
     if (matchData.teamA) {
       if (!matchData.teamA.player1) errors.push('Team A player 1 is required');
-      if (typeof matchData.teamA.game1 !== 'number') errors.push('Team A game 1 score is required');
+      if (typeof matchData.teamA.game1 !== 'number')
+        errors.push('Team A game 1 score is required');
 
       if (matchData.format === 'DOUBLES' && !matchData.teamA.player2) {
         errors.push('Team A player 2 is required for doubles matches');
@@ -268,7 +286,8 @@ class DuprMatchService {
 
     if (matchData.teamB) {
       if (!matchData.teamB.player1) errors.push('Team B player 1 is required');
-      if (typeof matchData.teamB.game1 !== 'number') errors.push('Team B game 1 score is required');
+      if (typeof matchData.teamB.game1 !== 'number')
+        errors.push('Team B game 1 score is required');
 
       if (matchData.format === 'DOUBLES' && !matchData.teamB.player2) {
         errors.push('Team B player 2 is required for doubles matches');
@@ -282,10 +301,18 @@ class DuprMatchService {
 
     // Score validation - ensure there's a winner
     if (matchData.teamA && matchData.teamB) {
-      const teamATotal = (matchData.teamA.game1 || 0) + (matchData.teamA.game2 || 0) +
-                        (matchData.teamA.game3 || 0) + (matchData.teamA.game4 || 0) + (matchData.teamA.game5 || 0);
-      const teamBTotal = (matchData.teamB.game1 || 0) + (matchData.teamB.game2 || 0) +
-                        (matchData.teamB.game3 || 0) + (matchData.teamB.game4 || 0) + (matchData.teamB.game5 || 0);
+      const teamATotal =
+        (matchData.teamA.game1 || 0) +
+        (matchData.teamA.game2 || 0) +
+        (matchData.teamA.game3 || 0) +
+        (matchData.teamA.game4 || 0) +
+        (matchData.teamA.game5 || 0);
+      const teamBTotal =
+        (matchData.teamB.game1 || 0) +
+        (matchData.teamB.game2 || 0) +
+        (matchData.teamB.game3 || 0) +
+        (matchData.teamB.game4 || 0) +
+        (matchData.teamB.game5 || 0);
 
       if (teamATotal === teamBTotal) {
         errors.push('Matches cannot be tied - there must be a clear winner');
@@ -339,7 +366,7 @@ class DuprMatchService {
         internal_match_id: internalMatch.id,
         tournament_id: internalMatch.tournament_id,
         category_id: internalMatch.category_id,
-      }
+      },
     };
   }
 }
