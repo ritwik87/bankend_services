@@ -92,14 +92,14 @@ class DuprMatchService {
       const responseData = response.data;
 
       // Process batch response
-      if (responseData && Array.isArray(responseData.results)) {
+      if (responseData && Array.isArray(responseData.result?.matchCodes)) {
         for (let i = 0; i < matches.length; i++) {
-          const result = responseData.results[i];
+          const result = responseData.result?.matchCodes[i];
           results.push({
-            success: !!result?.matchId,
+            success: !!result?.matchCode,
             matchId: result?.matchId,
             matchCode: result?.matchCode,
-            message: result?.matchId ? 'Success' : 'Failed',
+            message: result?.matchCode ? 'Success' : 'Failed',
             error: result?.error,
           });
         }
