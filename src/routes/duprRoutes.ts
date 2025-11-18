@@ -598,4 +598,183 @@ router.get('/match/:matchId', duprController.getMatchInfo);
  */
 router.get('/health', duprController.healthCheck);
 
+/**
+ * @swagger
+ * /api/dupr/create-event:
+ *   post:
+ *     tags:
+ *       - DUPR Event Management
+ *     summary: Create Event in DUPR
+ *     description: Create a new event in DUPR system (tournament or league)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [data, date, metadata, text]
+ *             properties:
+ *               data:
+ *                 type: object
+ *                 required: [name, address, registrationUrl, minRating, maxRating, minAge, maxAge]
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                     example: "Summer Pickleball Tournament 2024"
+ *                   address:
+ *                     type: string
+ *                     example: "Newport Beach, CA"
+ *                   registrationUrl:
+ *                     type: string
+ *                     example: "https://example.com/register"
+ *                   minRating:
+ *                     type: number
+ *                     example: 2.0
+ *                   maxRating:
+ *                     type: number
+ *                     example: 5.0
+ *                   minAge:
+ *                     type: number
+ *                     example: 18
+ *                   maxAge:
+ *                     type: number
+ *                     example: 65
+ *               date:
+ *                 type: object
+ *                 required: [startTime, endTime]
+ *                 properties:
+ *                   startTime:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2024-08-15T09:00:00Z"
+ *                   endTime:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2024-08-15T17:00:00Z"
+ *               metadata:
+ *                 type: object
+ *                 required: [metadata]
+ *                 properties:
+ *                   metadata:
+ *                     type: object
+ *                     additionalProperties:
+ *                       type: string
+ *                     example: { "organizerId": "123", "type": "tournament" }
+ *               text:
+ *                 type: object
+ *                 required: [text]
+ *                 properties:
+ *                   text:
+ *                     type: object
+ *                     additionalProperties:
+ *                       type: string
+ *                     example: { "description": "Annual summer tournament" }
+ *     responses:
+ *       200:
+ *         description: Event created successfully
+ *       400:
+ *         description: Bad request - validation failed
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/create-event', duprController.createEvent);
+
+/**
+ * @swagger
+ * /api/dupr/update-event/{eventId}:
+ *   put:
+ *     tags:
+ *       - DUPR Event Management
+ *     summary: Update Event in DUPR
+ *     description: Update an existing event in DUPR system
+ *     parameters:
+ *       - name: eventId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: DUPR Event ID to update
+ *         example: "event-123"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [data, date, metadata, text]
+ *             properties:
+ *               data:
+ *                 type: object
+ *               date:
+ *                 type: object
+ *               metadata:
+ *                 type: object
+ *               text:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Event updated successfully
+ *       400:
+ *         description: Bad request
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/update-event/:eventId', duprController.updateEvent);
+
+/**
+ * @swagger
+ * /api/dupr/delete-event/{eventId}:
+ *   delete:
+ *     tags:
+ *       - DUPR Event Management
+ *     summary: Delete Event from DUPR
+ *     description: Delete an event from DUPR system
+ *     parameters:
+ *       - name: eventId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: DUPR Event ID to delete
+ *         example: "event-123"
+ *     responses:
+ *       200:
+ *         description: Event deleted successfully
+ *       400:
+ *         description: Bad request
+ *       404:
+ *         description: Event not found
+ *       500:
+ *         description: Internal server error
+ */
+router.delete('/delete-event/:eventId', duprController.deleteEvent);
+
+/**
+ * @swagger
+ * /api/dupr/get-event/{eventId}:
+ *   get:
+ *     tags:
+ *       - DUPR Event Management
+ *     summary: Get Event Information
+ *     description: Retrieve detailed information about a specific event from DUPR
+ *     parameters:
+ *       - name: eventId
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: DUPR Event ID to retrieve
+ *         example: "event-123"
+ *     responses:
+ *       200:
+ *         description: Event information retrieved successfully
+ *       400:
+ *         description: Bad request
+ *       404:
+ *         description: Event not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/get-event/:eventId', duprController.getEvent);
+
 export default router;

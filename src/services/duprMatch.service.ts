@@ -8,6 +8,13 @@ import duprAuthService from './duprAuth.service';
 
 class DuprMatchService {
   private readonly apiVersion = 'v1.0';
+  private readonly clubId?: number;
+
+  constructor() {
+    // Load club ID from environment variable
+    const clubIdEnv = process.env.DUPR_CLUB_ID;
+    this.clubId = clubIdEnv ? parseInt(clubIdEnv, 10) : undefined;
+  }
 
   /**
    * Upload a single match to DUPR
@@ -19,11 +26,17 @@ class DuprMatchService {
       // Validate match data
       this.validateMatchData(matchData);
 
+      // Add club ID if available and not already set
+      const dataWithClubId = {
+        ...matchData,
+        clubId: matchData.clubId || this.clubId,
+      };
+
       // Make authenticated request to DUPR
       const response = await duprAuthService.makeAuthenticatedRequest(
         `/match/${this.apiVersion}/create`,
         'POST',
-        matchData
+        dataWithClubId
       );
 
       logger.info('DUPR match upload successful', {
@@ -62,11 +75,17 @@ class DuprMatchService {
       // Validate all matches
       matches.forEach((match) => this.validateMatchData(match));
 
+      // Add club ID to all matches if available and not already set
+      const matchesWithClubId = matches.map((match) => ({
+        ...match,
+        clubId: match.clubId || this.clubId,
+      }));
+
       // Make authenticated request to DUPR batch endpoint
       const response = await duprAuthService.makeAuthenticatedRequest(
         `/match/${this.apiVersion}/batch`,
         'POST',
-        matches
+        matchesWithClubId
       );
 
       const results: DuprMatchUploadResponse[] = [];
@@ -145,6 +164,7 @@ class DuprMatchService {
       const updateData = {
         ...matchData,
         matchId,
+        clubId: matchData.clubId || this.clubId,
       };
 
       const response = await duprAuthService.makeAuthenticatedRequest(
@@ -350,6 +370,7 @@ class DuprMatchService {
       identifier: `match-${internalMatch.id}-${Date.now()}`, // Unique identifier
       format: internalMatch.match_type === 'singles' ? 'SINGLES' : 'DOUBLES',
       location: internalMatch.location || '',
+      clubId: this.clubId, // Add club ID from environment
       teamA: {
         player1: internalMatch.team1_player1?.dupr_id || '',
         player2: internalMatch.team1_player2?.dupr_id,
