@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
-import { ApiResponse, DuprValidationRequest, DuprMatchUploadRequest, DuprMatchUploadResponse, DuprBatchUploadResponse } from '../types/dupr.types';
+import { ApiResponse, DuprValidationRequest, DuprMatchUploadRequest, DuprMatchUploadResponse, DuprBatchUploadResponse, EventV1, DuprEventResponse } from '../types/dupr.types';
 import duprPlayerService from '../services/duprPlayer.service';
 import duprMatchService from '../services/duprMatch.service';
+import duprEventService from '../services/duprEvent.service';
 import { validateRequest, duprValidationSchema, duprIdSchema } from '../utils/validation';
 import logger from '../utils/logger';
 
@@ -429,6 +430,196 @@ export class DuprController {
         success: false,
         error: error.message || 'Internal server error',
         message: 'Failed to retrieve match information'
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async createEvent(req: Request, res: Response): Promise<void> {
+    try {
+      const eventData: EventV1 = req.body;
+
+      // Validate required fields
+      if (!eventData.data || !eventData.date || !eventData.metadata || !eventData.text) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Missing required fields',
+          message: 'Event data, date, metadata, and text are required',
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const createResponse = await duprEventService.createEvent(eventData);
+
+      if (createResponse.success) {
+        const response: ApiResponse<DuprEventResponse> = {
+          success: true,
+          data: createResponse,
+          message: 'Event created successfully in DUPR',
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: createResponse.error || 'Event creation failed',
+          message: createResponse.message || 'Failed to create event in DUPR',
+        };
+
+        res.status(400).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Create event controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to create event',
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async updateEvent(req: Request, res: Response): Promise<void> {
+    try {
+      const { eventId } = req.params;
+      const eventData: EventV1 = req.body;
+
+      if (!eventId) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Event ID is required',
+          message: 'Please provide a valid event ID',
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const updateResponse = await duprEventService.updateEvent(eventId, eventData);
+
+      if (updateResponse.success) {
+        const response: ApiResponse<DuprEventResponse> = {
+          success: true,
+          data: updateResponse,
+          message: 'Event updated successfully in DUPR',
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: updateResponse.error || 'Event update failed',
+          message: updateResponse.message || 'Failed to update event in DUPR',
+        };
+
+        res.status(400).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Update event controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to update event',
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async deleteEvent(req: Request, res: Response): Promise<void> {
+    try {
+      const { eventId } = req.params;
+
+      if (!eventId) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Event ID is required',
+          message: 'Please provide a valid event ID',
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const deleteResponse = await duprEventService.deleteEvent(eventId);
+
+      if (deleteResponse.success) {
+        const response: ApiResponse<DuprEventResponse> = {
+          success: true,
+          data: deleteResponse,
+          message: 'Event deleted successfully from DUPR',
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: deleteResponse.error || 'Event deletion failed',
+          message: deleteResponse.message || 'Failed to delete event from DUPR',
+        };
+
+        res.status(400).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Delete event controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to delete event',
+      };
+
+      res.status(500).json(response);
+    }
+  }
+
+  async getEvent(req: Request, res: Response): Promise<void> {
+    try {
+      const { eventId } = req.params;
+
+      if (!eventId) {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: 'Event ID is required',
+          message: 'Please provide a valid event ID',
+        };
+
+        res.status(400).json(response);
+        return;
+      }
+
+      const eventResponse = await duprEventService.getEvent(eventId);
+
+      if (eventResponse.success) {
+        const response: ApiResponse<DuprEventResponse> = {
+          success: true,
+          data: eventResponse,
+          message: 'Event information retrieved successfully',
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: eventResponse.error || 'Failed to retrieve event info',
+          message: eventResponse.message || 'Failed to retrieve event information from DUPR',
+        };
+
+        res.status(404).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Get event controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to retrieve event information',
       };
 
       res.status(500).json(response);
