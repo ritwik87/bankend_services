@@ -1,0 +1,1760 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DUPR Partner APIs",
+    "description": "External RESTful APIs to access DUPR ratings, users and provide matches.",
+    "version": "v1.0.0"
+  },
+  "servers": [{ "url": "https://uat.mydupr.com/api" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "Events", "description": "Resources to add external events." },
+    {
+      "name": "Player Rating",
+      "description": "Resources to access DUPR Player rating data."
+    },
+    {
+      "name": "Player",
+      "description": "Resources to access DUPR Player data."
+    },
+    { "name": "Users", "description": "Resources to access DUPR user's data." },
+    { "name": "Match", "description": "Resources to access DUPR match data." },
+    {
+      "name": "Authentication",
+      "description": "Authenticate using client secret and key to get access token."
+    },
+    { "name": "Club", "description": "Resources to access DUPR Club data." }
+  ],
+  "paths": {
+    "/{version}/webhook": {
+      "post": {
+        "tags": ["ApiRegistration"],
+        "operationId": "register",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ClientHookRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/{version}/subscribe/rating-changes": {
+      "get": {
+        "tags": ["Player Rating"],
+        "summary": "Fetch Players subscription by Client",
+        "description": "Return a list of Players based on the client.",
+        "operationId": "getClientPlayersSubscription",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      },
+      "post": {
+        "tags": ["Player Rating"],
+        "summary": "Subscribe players rating",
+        "description": "This API receives a list of Player ids and relates the Client and the Player, after any\n                rating change on the player, the client will receive a request in the webhook endpoint.",
+        "operationId": "subscribePlayerRating",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      },
+      "delete": {
+        "tags": ["Player Rating"],
+        "summary": "Removes players rating",
+        "description": "This API receives a list of Player ids and removes the relationship between it with the Client.",
+        "operationId": "removePlayerSubscription",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/{version}/player": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Players Rating",
+        "description": "This API provide ratings of all members of the club.",
+        "operationId": "getRankOfPlayers",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PlayersSortedRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/{version}/player/duprid-by-email": {
+      "post": {
+        "tags": ["Player"],
+        "summary": "Get DUPR ID by Email",
+        "description": "Finds the Player's DUPR ID based on Email.",
+        "operationId": "getPlayerDUPRIdByEmail",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindDuprIdByEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/subscription/grants": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Grant a subscription for an external user",
+        "operationId": "grantSubscription",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantExternalSubscriptionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/subscribe/webhook-event": {
+      "post": {
+        "tags": ["Users"],
+        "operationId": "subscribeUserWebhookEvent",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserWebhookRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      },
+      "delete": {
+        "tags": ["Users"],
+        "operationId": "unsubscribeUserWebhookEvent",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UserWebhookRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/search": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "User Search",
+        "description": "This API does full-text search on user names and it returns user full names and respective DUPR IDs",
+        "operationId": "userSearch",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExternalSearchRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/provisional_rating": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Get the provisional rating for a player",
+        "operationId": "getUserProvisionalRating",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GetProvisionalRatingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/provisional_rating/update": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Set the provisional rating for a player",
+        "operationId": "updateUserProvisionalRating",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProvisionalRatingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/provisional_rating/create": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Set the provisional rating for a player",
+        "operationId": "createUserProvisionalRating",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProvisionalRatingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/invite": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Pre-generate a dupr ID and invite a user to join",
+        "operationId": "inviteUser",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExternalInviteRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/match/{version}/update": {
+      "post": {
+        "tags": ["Match"],
+        "summary": "Update a match",
+        "description": "This API allows a client to update a match by its ID.",
+        "operationId": "updateMatch",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalUpdateMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/match/{version}/create": {
+      "post": {
+        "tags": ["Match"],
+        "summary": "Create Match",
+        "description": "This API allow to create a match. It returns unique match id in response.",
+        "operationId": "saveMatch",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExternalMatchRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/match/{version}/batch": {
+      "post": {
+        "tags": ["Match"],
+        "summary": "Create Match in Bulk",
+        "description": "This API allow to create a matches in bulk. It returns unique match ids in response in same order as they were sent.",
+        "operationId": "saveMatchInBulk",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ExternalMatchRequest" }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/match/history/search": {
+      "post": {
+        "tags": ["Match"],
+        "summary": "Get Match History",
+        "description": "This API displays the match history for the specified player",
+        "operationId": "searchMatchHistory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalMatchSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/history": {
+      "post": {
+        "tags": ["Player Rating"],
+        "operationId": "getPlayerRatingHistoryByUser",
+        "parameters": [
+          {
+            "name": "duprId",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "format": "int32" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "integer", "format": "int32" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/events/{version}/update": {
+      "post": {
+        "tags": ["Events"],
+        "summary": "Update Event",
+        "description": "Update an event",
+        "operationId": "updateEvent",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateEventRequestV1" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/events/{version}/delete": {
+      "post": {
+        "tags": ["Events"],
+        "summary": "Delete Event",
+        "description": "Delete an event",
+        "operationId": "deleteEvent",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeleteEventRequestV1" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/events/{version}/create": {
+      "post": {
+        "tags": ["Events"],
+        "summary": "Create Event",
+        "description": "Create an event",
+        "operationId": "createEvent",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateEventRequestV1" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/club/{version}/members": {
+      "post": {
+        "tags": ["Club"],
+        "summary": "Club Members Rating",
+        "description": "This API provide ratings of all members of the club.",
+        "operationId": "clubMembersRating",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalClubMemberRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/club/{version}/match/search": {
+      "post": {
+        "tags": ["Club"],
+        "operationId": "clubMatchesSearch",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalClubMatchSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/auth/{version}/token": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Generate Access Token",
+        "description": "Use provided client key and secret to generate short lived access token. Access token is mandatory to use all the other resources.",
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          },
+          {
+            "name": "x-authorization",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "none": [] }, { "bearerAuth": [] }]
+      }
+    },
+    "/{version}/topic": {
+      "get": {
+        "tags": ["ApiRegistration"],
+        "operationId": "getAll",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "type": "object" } } }
+          }
+        }
+      }
+    },
+    "/user/{version}/{id}": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "User Info",
+        "description": "This API provides details like full name, singles and doubles ratings with provisional ratings flags. It requires DUPR ID as an input.",
+        "operationId": "userDetail",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/{id}/details": {
+      "get": {
+        "tags": ["Users"],
+        "operationId": "userExtendedDetail",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/{id}/clubs": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Retrieve the club membership for a user by DUPR Id",
+        "operationId": "getClubMembershipByDuprId",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubMembershipResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/match/{version}/{id}": {
+      "get": {
+        "tags": ["Match"],
+        "operationId": "viewMatch",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/events/{version}/get": {
+      "get": {
+        "tags": ["Events"],
+        "operationId": "getEvent",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/GetEventRequestV1" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/user/{version}/provisional_rating/delete": {
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Delete the provisional rating for a player",
+        "operationId": "deleteUserProvisionalRating",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteProvisionalRatingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    },
+    "/match/{version}/delete": {
+      "delete": {
+        "tags": ["Match"],
+        "summary": "Delete Match",
+        "description": "This API allows to delete an existing match.",
+        "operationId": "deleteMatch",
+        "parameters": [
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "default": "v1.0" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalDeleteMatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ClientHookRequest": {
+        "type": "object",
+        "properties": {
+          "clientId": { "type": "string" },
+          "webhookUrl": { "type": "string" },
+          "topics": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["clientId", "topics", "webhookUrl"]
+      },
+      "PlayersSortedRequest": {
+        "type": "object",
+        "properties": {
+          "duprIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "uniqueItems": true
+          },
+          "sortBy": { "type": "string" }
+        },
+        "required": ["duprIds", "sortBy"]
+      },
+      "FindDuprIdByEmailRequest": {
+        "type": "object",
+        "properties": { "email": { "type": "string" } },
+        "required": ["email"]
+      },
+      "AttributionRequest": {
+        "type": "object",
+        "properties": {
+          "clientKeyId": { "type": "integer", "format": "int64" }
+        }
+      },
+      "GrantExternalSubscriptionRequest": {
+        "type": "object",
+        "properties": {
+          "user": { "$ref": "#/components/schemas/TargetUserRequest" },
+          "item": { "$ref": "#/components/schemas/SubscriptionItemRequest" },
+          "attribution": { "$ref": "#/components/schemas/AttributionRequest" },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["item", "metadata", "user"]
+      },
+      "SubscriptionItemRequest": {
+        "type": "object",
+        "properties": {
+          "promotionId": { "type": "string" },
+          "productId": { "type": "string" }
+        },
+        "required": ["productId", "promotionId"]
+      },
+      "TargetUserRequest": {
+        "type": "object",
+        "properties": {
+          "duprId": { "type": "string" },
+          "email": { "type": "string" }
+        }
+      },
+      "UserWebhookRequest": {
+        "type": "object",
+        "properties": {
+          "duprIds": {
+            "type": "array",
+            "example": "[2LKVPR]",
+            "items": { "type": "string" }
+          },
+          "topic": { "type": "string", "example": "RATING" }
+        },
+        "required": ["duprIds", "topic"]
+      },
+      "ExternalAgeRangeFilter": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Minimum age value of a user",
+            "example": 18
+          },
+          "max": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum age value of a user",
+            "example": 25
+          }
+        },
+        "required": ["max", "min"]
+      },
+      "ExternalFilterLocation": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "format": "double",
+            "description": "Earth's latitude value",
+            "example": 72.34654645455,
+            "maximum": 90,
+            "minimum": -90
+          },
+          "lng": {
+            "type": "number",
+            "format": "double",
+            "description": "Earth's longitude value",
+            "example": 19.55151584984,
+            "maximum": 180,
+            "minimum": -180
+          },
+          "address": {
+            "type": "string",
+            "description": "Street level address in format county / city, state / region, country",
+            "example": "Austin, TX, USA"
+          },
+          "radiusInMeters": {
+            "type": "number",
+            "format": "double",
+            "description": "Radius distance in meters from the point of provided latitude and longitude, default is 40233.6 meters (25 miles)",
+            "example": 40233.6
+          }
+        },
+        "required": ["address", "lat", "lng", "radiusInMeters"]
+      },
+      "ExternalRatingFilter": {
+        "type": "object",
+        "properties": {
+          "min": {
+            "type": "number",
+            "description": "Minimum value of user ratings can be down to 2.0",
+            "example": 2.3,
+            "maximum": 8.0,
+            "minimum": 2.0
+          },
+          "max": {
+            "type": "number",
+            "description": "Maximum value of user ratings can be up to 8.0",
+            "example": 3.3,
+            "maximum": 8.0,
+            "minimum": 2.0
+          },
+          "type": {
+            "type": "string",
+            "description": "Type of ratings to apply min and max values, one of the value from following array.",
+            "enum": ["SINGLES", "DOUBLES"],
+            "example": "DOUBLES"
+          },
+          "reliable": {
+            "type": "boolean",
+            "description": "Ratings should be reliable or not, by default null which means it is not considered"
+          }
+        },
+        "required": ["max", "min"]
+      },
+      "ExternalSearchFilter": {
+        "type": "object",
+        "properties": {
+          "gender": {
+            "type": "string",
+            "description": "Value must be exact match from the following array.",
+            "example": "MALE",
+            "maxLength": 6,
+            "minLength": 4,
+            "pattern": "^(?:male|female)$"
+          },
+          "location": {
+            "$ref": "#/components/schemas/ExternalFilterLocation",
+            "description": "Latitude and longitude of a place with radius to filter by approximate area"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/ExternalRatingFilter",
+            "description": "Filter users by their ratings"
+          },
+          "age": {
+            "$ref": "#/components/schemas/ExternalAgeRangeFilter",
+            "description": "Filter users by their age"
+          }
+        }
+      },
+      "ExternalSearchRequest": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "User full or partial name to get details",
+            "example": "*"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Starting offset to paginate results",
+            "example": 0
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of results in a page",
+            "example": 25,
+            "maximum": 100
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ExternalSearchFilter",
+            "description": "Criteria to search specific users"
+          }
+        },
+        "required": ["limit", "offset", "query"]
+      },
+      "GetProvisionalRatingRequest": {
+        "type": "object",
+        "properties": { "duprId": { "type": "string", "example": "DXJDF" } },
+        "required": ["duprId"]
+      },
+      "RatingCoach": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["metadata"]
+      },
+      "UpdateProvisionalRatingRequest": {
+        "type": "object",
+        "properties": {
+          "duprId": { "type": "string", "example": "DXJDF" },
+          "provisionalSinglesRating": {
+            "type": "number",
+            "format": "float",
+            "example": 3.5
+          },
+          "provisionalDoublesRating": {
+            "type": "number",
+            "format": "float",
+            "example": 3.5
+          },
+          "coach": {
+            "$ref": "#/components/schemas/RatingCoach",
+            "example": "{ id: 12345, metadata: { name: example }}"
+          }
+        },
+        "required": ["duprId"]
+      },
+      "CreateProvisionalRatingRequest": {
+        "type": "object",
+        "properties": {
+          "duprId": { "type": "string", "example": "DXJDF" },
+          "provisionalSinglesRating": {
+            "type": "number",
+            "format": "float",
+            "example": 3.5
+          },
+          "provisionalDoublesRating": {
+            "type": "number",
+            "format": "float",
+            "example": 3.5
+          },
+          "coach": {
+            "$ref": "#/components/schemas/RatingCoach",
+            "example": "{ id: 12345, metadata: { name: example }}"
+          }
+        },
+        "required": ["duprId"]
+      },
+      "ExternalInviteRequest": {
+        "type": "object",
+        "properties": {
+          "fullName": { "type": "string", "example": "John Doe" },
+          "email": {
+            "type": "string",
+            "example": "user@example.com",
+            "minLength": 1
+          },
+          "isoCode": { "type": "string", "example": "US" },
+          "phone": { "type": "string", "example": "+19876543210" },
+          "identifier": { "type": "string", "example": 12345 }
+        },
+        "required": ["email", "fullName"]
+      },
+      "ExternalMatchTeam": {
+        "type": "object",
+        "properties": {
+          "player1": {
+            "type": "string",
+            "description": "DUPR ID of player 1",
+            "example": "L8EW8W",
+            "minLength": 1
+          },
+          "player2": {
+            "type": "string",
+            "description": "DUPR ID of player 2, in case of singles it can be null",
+            "example": "O8GJV8"
+          },
+          "game1": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Team's Game 1 score",
+            "example": 7
+          },
+          "game2": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Team's Game 2 score",
+            "example": 11
+          },
+          "game3": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Team's Game 3 score",
+            "example": 0
+          },
+          "game4": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Team's Game 4 score",
+            "example": 0
+          },
+          "game5": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Team's Game 5 score",
+            "example": 0
+          }
+        },
+        "required": ["game1", "player1"]
+      },
+      "ExternalUpdateMatchRequest": {
+        "type": "object",
+        "properties": {
+          "matchId": { "type": "integer", "format": "int64", "example": 12345 },
+          "location": { "type": "string", "example": "Newport Beach, CA" },
+          "matchDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Match date must be in ISO 8061 format date i.e. yyyy-MM-dd",
+            "example": "yyyy-MM-dd"
+          },
+          "teamA": { "$ref": "#/components/schemas/ExternalMatchTeam" },
+          "teamB": { "$ref": "#/components/schemas/ExternalMatchTeam" },
+          "format": {
+            "type": "string",
+            "description": "Match format Singles or Doubles",
+            "enum": ["SINGLES", "DOUBLES"],
+            "example": "SINGLES"
+          },
+          "event": {
+            "type": "string",
+            "description": "Event name in which this match was played",
+            "example": "Event name",
+            "minLength": 1
+          },
+          "bracket": {
+            "type": "string",
+            "description": "Bracket name in which this match was played",
+            "example": "Bracket name"
+          },
+          "matchType": {
+            "type": "string",
+            "description": "MatchTypes can be a value between RALLY or SIDEOUT",
+            "enum": ["SIDEOUT", "RALLY"],
+            "example": "SIDEOUT"
+          },
+          "identifier": {
+            "type": "string",
+            "description": "An unique identifier for this match",
+            "example": "unique-identifier",
+            "minLength": 1
+          },
+          "clubId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "DUPR Club unique identifier",
+            "example": 7614955351
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Extra parameters in key value pairs",
+            "example": { "key1": "value1", "key2": "value2" }
+          },
+          "matchSource": {
+            "type": "string",
+            "description": "Match source can be a value between CLUB or DUPR",
+            "enum": ["DUPR, LEAGUE, PARTNER, CLUB"],
+            "example": "DUPR/CLUB"
+          }
+        },
+        "required": [
+          "event",
+          "format",
+          "identifier",
+          "matchDate",
+          "matchId",
+          "teamA",
+          "teamB"
+        ]
+      },
+      "ExternalMatchRequest": {
+        "type": "object",
+        "properties": {
+          "location": { "type": "string", "example": "Newport Beach, CA" },
+          "matchDate": {
+            "type": "string",
+            "format": "date",
+            "description": "Match date must be in ISO 8061 format date i.e. yyyy-MM-dd",
+            "example": "yyyy-MM-dd"
+          },
+          "teamA": { "$ref": "#/components/schemas/ExternalMatchTeam" },
+          "teamB": { "$ref": "#/components/schemas/ExternalMatchTeam" },
+          "format": {
+            "type": "string",
+            "description": "Match format Singles or Doubles",
+            "enum": ["SINGLES", "DOUBLES"],
+            "example": "SINGLES"
+          },
+          "event": {
+            "type": "string",
+            "description": "Event name in which this match was played",
+            "example": "Event name",
+            "minLength": 1
+          },
+          "bracket": {
+            "type": "string",
+            "description": "Bracket name in which this match was played",
+            "example": "Bracket name"
+          },
+          "matchType": {
+            "type": "string",
+            "description": "MatchTypes can be a value between RALLY or SIDEOUT",
+            "enum": ["SIDEOUT", "RALLY"],
+            "example": "SIDEOUT"
+          },
+          "identifier": {
+            "type": "string",
+            "description": "An unique identifier for this match",
+            "example": "unique-identifier",
+            "minLength": 1
+          },
+          "clubId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "DUPR Club unique identifier",
+            "example": 7614955351
+          },
+          "extras": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Extra parameters in key value pairs",
+            "example": { "key1": "value1", "key2": "value2" }
+          },
+          "matchSource": {
+            "type": "string",
+            "description": "The source of the match; see the enum array for allowed values",
+            "enum": ["DUPR, LEAGUE, PARTNER, CLUB"],
+            "example": "CLUB"
+          }
+        },
+        "required": [
+          "event",
+          "format",
+          "identifier",
+          "matchDate",
+          "teamA",
+          "teamB"
+        ]
+      },
+      "ExternalMatchSearchRequest": {
+        "type": "object",
+        "properties": {
+          "offset": { "type": "integer", "format": "int32", "example": 0 },
+          "limit": { "type": "integer", "format": "int32", "example": 3 },
+          "eventFormat": {
+            "type": "array",
+            "example": "['SINGLES','DOUBLES']",
+            "items": { "type": "string", "enum": ["SINGLES", "DOUBLES"] }
+          },
+          "startDate": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The start date in epoch seconds",
+            "example": 1724099943
+          },
+          "endDate": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The end date in epoch seconds",
+            "example": 1724100043
+          },
+          "duprId": { "type": "string", "example": "KJHFAH" }
+        },
+        "required": [
+          "duprId",
+          "endDate",
+          "eventFormat",
+          "limit",
+          "offset",
+          "startDate"
+        ]
+      },
+      "EventDataV1": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "address": { "type": "string" },
+          "registrationUrl": { "type": "string" },
+          "minRating": { "type": "number", "format": "double" },
+          "maxRating": { "type": "number", "format": "double" },
+          "minAge": { "type": "integer", "format": "int32" },
+          "maxAge": { "type": "integer", "format": "int32" }
+        },
+        "required": [
+          "address",
+          "maxAge",
+          "maxRating",
+          "minAge",
+          "minRating",
+          "name",
+          "registrationUrl"
+        ]
+      },
+      "EventDatesV1": {
+        "type": "object",
+        "properties": {
+          "startTime": { "type": "string", "format": "date-time" },
+          "endTime": { "type": "string", "format": "date-time" }
+        },
+        "required": ["endTime", "startTime"]
+      },
+      "EventMetadataV1": {
+        "type": "object",
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["metadata"]
+      },
+      "EventTextV1": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        "required": ["text"]
+      },
+      "EventV1": {
+        "type": "object",
+        "properties": {
+          "metadata": { "$ref": "#/components/schemas/EventMetadataV1" },
+          "data": { "$ref": "#/components/schemas/EventDataV1" },
+          "text": { "$ref": "#/components/schemas/EventTextV1" },
+          "date": { "$ref": "#/components/schemas/EventDatesV1" }
+        },
+        "required": ["data", "date", "metadata", "text"]
+      },
+      "UpdateEventRequestV1": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/components/schemas/EventV1" }
+          }
+        },
+        "required": ["events"]
+      },
+      "DeleteEventRequestV1": {
+        "type": "object",
+        "properties": {
+          "eventIds": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["eventIds"]
+      },
+      "CreateEventRequestV1": {
+        "type": "object",
+        "properties": { "event": { "$ref": "#/components/schemas/EventV1" } },
+        "required": ["event"]
+      },
+      "ExternalClubMemberRequest": {
+        "type": "object",
+        "properties": {
+          "clubId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "DUPR Club ID",
+            "example": 102387102937
+          }
+        },
+        "required": ["clubId"]
+      },
+      "ExternalClubMatchSearchRequest": {
+        "type": "object",
+        "properties": {
+          "offset": { "type": "integer", "format": "int32", "example": 0 },
+          "limit": { "type": "integer", "format": "int32", "example": 3 },
+          "eventFormat": {
+            "type": "array",
+            "example": "['SINGLES','DOUBLES']",
+            "items": { "type": "string", "enum": ["SINGLES", "DOUBLES"] }
+          },
+          "startDate": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The start date in epoch seconds",
+            "example": 1724099943
+          },
+          "endDate": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The end date in epoch seconds",
+            "example": 1724100043
+          },
+          "clubId": {
+            "type": "integer",
+            "format": "int64",
+            "example": 874569874
+          }
+        },
+        "required": [
+          "clubId",
+          "endDate",
+          "eventFormat",
+          "limit",
+          "offset",
+          "startDate"
+        ]
+      },
+      "ClubMembership": {
+        "type": "object",
+        "properties": {
+          "clubId": { "type": "integer", "format": "int64" },
+          "clubName": { "type": "string" },
+          "role": {
+            "type": "string",
+            "enum": ["PLAYER", "DIRECTOR", "ORGANIZER", "PENDING_PLAYER"]
+          }
+        },
+        "required": ["clubId", "clubName", "role"]
+      },
+      "ClubMembershipResponse": {
+        "type": "object",
+        "properties": {
+          "membership": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ClubMembership" }
+          }
+        },
+        "required": ["membership"]
+      },
+      "GetEventRequestV1": {
+        "type": "object",
+        "properties": {
+          "eventIds": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["eventIds"]
+      },
+      "DeleteProvisionalRatingRequest": {
+        "type": "object",
+        "properties": { "duprId": { "type": "string", "example": "DXJDF" } },
+        "required": ["duprId"]
+      },
+      "ExternalDeleteMatchRequest": {
+        "type": "object",
+        "properties": {
+          "matchCode": {
+            "type": "string",
+            "description": "An unique match code returned at time of creation",
+            "example": "match-code",
+            "minLength": 1
+          },
+          "identifier": {
+            "type": "string",
+            "description": "An unique identifier for this match",
+            "example": "unique-identifier",
+            "minLength": 1
+          }
+        },
+        "required": ["identifier", "matchCode"]
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "in": "header",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

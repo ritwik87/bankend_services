@@ -117,3 +117,58 @@ export interface DuprBatchUploadResponse {
   failed: number;
   results: DuprMatchUploadResponse[];
 }
+
+// DUPR Event Types - Based on official API schema
+export interface EventMetadataV1 {
+  metadata: Record<string, string>; // Additional metadata in key-value pairs
+}
+
+export interface EventDataV1 {
+  name: string; // Event name (required)
+  address: string; // Event address (required)
+  registrationUrl: string; // Registration URL (required)
+  minRating: number; // Minimum DUPR rating (required)
+  maxRating: number; // Maximum DUPR rating (required)
+  minAge: number; // Minimum age (required)
+  maxAge: number; // Maximum age (required)
+}
+
+export interface EventTextV1 {
+  text: Record<string, string>; // Text content in key-value pairs
+}
+
+export interface EventDatesV1 {
+  startTime: string; // Event start time in ISO date-time format (required)
+  endTime: string; // Event end time in ISO date-time format (required)
+}
+
+export interface EventV1 {
+  metadata: EventMetadataV1; // Event metadata (required)
+  data: EventDataV1; // Event data (required)
+  text: EventTextV1; // Event text content (required)
+  date: EventDatesV1; // Event dates (required)
+}
+
+export interface DuprEventCreateRequest {
+  event: EventV1; // Event object (required)
+}
+
+export interface DuprEventUpdateRequest {
+  events: Record<string, EventV1>; // Events object with event IDs as keys
+}
+
+export interface DuprEventDeleteRequest {
+  eventIds: string[]; // Array of event IDs to delete
+}
+
+export interface DuprEventGetRequest {
+  eventIds: string[]; // Array of event IDs to retrieve
+}
+
+export interface DuprEventResponse {
+  success: boolean;
+  eventId?: string;
+  message?: string;
+  error?: string;
+  data?: any; // Response data from DUPR
+}
