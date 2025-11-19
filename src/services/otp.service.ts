@@ -557,6 +557,10 @@ class OtpService {
 
       // Check if this is a dummy user
       const dummyUser = getDummyUser(phone);
+      // ==================== OTP GENERATION COMMENTED OUT (FUTURE USE) ====================
+      // NOTE: OTP generation is skipped for direct partner registration
+      // Uncomment this section to re-enable OTP for partners
+      /*
       let otp: string;
       let shouldSendOtp = true;
 
@@ -573,6 +577,8 @@ class OtpService {
       // Set expiry time (5 minutes from now)
       const expiryTime = new Date();
       expiryTime.setMinutes(expiryTime.getMinutes() + 1);
+      */
+      // ==================== END OTP GENERATION ====================
 
       // Check if user exists in profiles table
       const { data: existingProfile } = await supabase
@@ -739,6 +745,10 @@ class OtpService {
         }
       }
 
+      // ==================== OTP STORAGE & SENDING COMMENTED OUT (FUTURE USE) ====================
+      // NOTE: OTP storage and WhatsApp sending is skipped for direct partner registration
+      // Uncomment this section to re-enable OTP verification
+      /*
       // Store OTP in database
       const { error: otpError } = await supabase.from('otps').upsert([
         {
@@ -778,10 +788,16 @@ class OtpService {
       }
 
       logger.info(`Partner OTP generated and sent for phone: ${phone}`);
+      */
+      // ==================== END OTP STORAGE & SENDING ====================
+
+      logger.info(
+        `Partner user created/validated successfully for phone: ${phone}`
+      );
 
       return {
         success: true,
-        message: 'OTP sent successfully via WhatsApp',
+        message: 'Partner user validated successfully',
         userExists: !!existingProfile,
       };
     } catch (error) {
@@ -910,8 +926,8 @@ class OtpService {
         };
       }
 
-      // For non-dummy users, allow them to proceed with OTP generation
-      // This creates the user flow same as main login but with player role
+      // For non-dummy users, create user if needed (but skip OTP)
+      // This creates the user flow same as main login but without OTP verification
       const result = await this.generatePartnerOtp({ phone });
 
       if (!result.success) {
@@ -923,7 +939,7 @@ class OtpService {
         };
       }
 
-      // Check if user exists after OTP generation (which creates guest users)
+      // Check if user exists after user creation (which creates guest users)
       const { data: profile, error } = await supabase
         .from('profiles')
         .select('id, role, name, email')
@@ -931,12 +947,12 @@ class OtpService {
         .single();
 
       if (error || !profile) {
-        // User still doesn't exist, allow them to proceed with OTP
+        // User still doesn't exist even after creation attempt
         return {
-          success: true,
+          success: false,
           userExists: false,
           isPlayer: false,
-          error: null,
+          error: 'Failed to create partner user',
         };
       }
 
@@ -945,10 +961,27 @@ class OtpService {
         profile.role !== 'guest' && profile.name && profile.email;
 
       if (!isPlayer) {
+        // Check if this is a guest who needs to complete registration
+        if (profile.role === 'guest' || !profile.name || !profile.email) {
+          return {
+            success: true,
+            userExists: true,
+            isPlayer: false,
+            needsRegistration: true,
+            user: {
+              id: profile.id,
+              role: profile.role,
+              name: profile.name || '',
+              email: profile.email || '',
+              phone: phone,
+            },
+            error: null,
+          };
+        }
+
+        // User exists but is not a player (admin, organizer, etc.)
         let errorMessage;
-        if (profile.role === 'guest') {
-          errorMessage = 'Partner needs to complete registration first';
-        } else if (profile.role !== 'player') {
+        if (profile.role !== 'player') {
           errorMessage = 'Only registered players can be selected as partners';
         } else {
           errorMessage = 'Partner profile is incomplete';
