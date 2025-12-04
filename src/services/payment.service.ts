@@ -1546,6 +1546,10 @@ export class PaymentService {
               isValid: true,
             };
           }
+        } else {
+          return {
+            isValid: true,
+          };
         }
       }
 
