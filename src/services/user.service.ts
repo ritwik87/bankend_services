@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import logger from '../utils/logger';
+import { phoneOrCondition } from '../utils/helper';
 import {
   UpdateEmailRequest,
   UpdateEmailResponse,
@@ -178,6 +179,367 @@ export class UserService {
         success: false,
         message: 'Internal server error',
         error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Deactivate user by changing their role to guest
+   */
+  async deactivateUser(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    error?: string;
+  }> {
+    try {
+      // Update role to guest in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          role: 'guest',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (profileError) {
+        logger.error('Error deactivating user in profiles:', profileError);
+        return {
+          success: false,
+          message: 'Failed to deactivate user',
+          error: profileError.message,
+        };
+      }
+
+      logger.info(`User deactivated successfully: ${userId}`);
+
+      return {
+        success: true,
+        message: 'User deactivated successfully',
+      };
+    } catch (error) {
+      logger.error('Error deactivating user:', error);
+      return {
+        success: false,
+        message: 'Internal server error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Permanently delete user from auth (cascades to all related tables)
+   * This is a hard delete and cannot be undone
+   */
+  async deleteUser(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    error?: string;
+  }> {
+    try {
+      // Delete from auth.users - this will cascade delete from all related tables
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+
+      if (authError) {
+        logger.error('Error deleting user from auth:', authError);
+        return {
+          success: false,
+          message: 'Failed to delete user',
+          error: authError.message,
+        };
+      }
+
+      logger.info(`User permanently deleted (with cascade): ${userId}`);
+
+      return {
+        success: true,
+        message: 'User deleted successfully',
+      };
+    } catch (error) {
+      logger.error('Error deleting user:', error);
+      return {
+        success: false,
+        message: 'Internal server error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Update user profile information
+   */
+  async updateUser(userId: string, userData: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    age?: number;
+    date_of_birth?: string;
+    dupr_id?: string;
+    role?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    error?: string;
+  }> {
+    try {
+      // Update profile in database
+      const updateData: any = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (userData.name !== undefined) updateData.name = userData.name;
+      if (userData.email !== undefined) updateData.email = userData.email;
+      if (userData.phone !== undefined) updateData.phone = userData.phone;
+      if (userData.age !== undefined) updateData.age = userData.age;
+      if (userData.date_of_birth !== undefined) updateData.date_of_birth = userData.date_of_birth;
+      if (userData.dupr_id !== undefined) updateData.dupr_id = userData.dupr_id;
+      if (userData.role !== undefined) updateData.role = userData.role;
+
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', userId);
+
+      if (profileError) {
+        logger.error('Error updating user profile:', profileError);
+        return {
+          success: false,
+          message: 'Failed to update user profile',
+          error: profileError.message,
+        };
+      }
+
+      // If email is updated, also update in auth
+      if (userData.email) {
+        const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
+          email: userData.email,
+          email_confirm: true,
+        });
+
+        if (authError) {
+          logger.error('Error updating user email in auth:', authError);
+          // Don't fail the whole operation, just log the error
+          logger.warn('Profile updated but auth email update failed');
+        }
+      }
+
+      logger.info(`User updated successfully: ${userId}`);
+
+      return {
+        success: true,
+        message: 'User updated successfully',
+      };
+    } catch (error) {
+      logger.error('Error updating user:', error);
+      return {
+        success: false,
+        message: 'Internal server error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Admin register user - Create/update user without OTP verification
+   * Used by admin panel to register users directly
+   */
+  async adminRegisterUser(request: {
+    phone: string;
+    userData: {
+      name: string;
+      email: string;
+      role: 'player' | 'organizer' | 'admin' | 'umpire';
+      organizationName?: string;
+      organizationDescription?: string;
+      experience?: string;
+    };
+  }): Promise<{
+    success: boolean;
+    user?: any;
+    message: string;
+    error?: string;
+  }> {
+    try {
+      const { phone, userData } = request;
+
+      logger.info(
+        `Admin registering user for phone: ${phone.replace(
+          /(.{3})(.*)(.{2})/,
+          '$1***$3'
+        )}`
+      );
+
+      // Check if user exists in profiles table
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('*')
+        .or(phoneOrCondition(phone))
+        .single();
+
+      let userId: string;
+
+      if (existingProfile) {
+        // User exists - update their profile
+        userId = existingProfile.id;
+        logger.info(`Updating existing user: ${userId}`);
+
+        const updateData = {
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          organization_name: userData.organizationName || null,
+          organization_description: userData.organizationDescription || null,
+          experience: userData.experience || null,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: updatedProfile, error: updateError } = await supabase
+          .from('profiles')
+          .update(updateData)
+          .eq('id', userId)
+          .select()
+          .single();
+
+        if (updateError) {
+          logger.error('Error updating profile:', updateError);
+          return {
+            success: false,
+            message: 'Failed to update user',
+            error: 'Failed to update user',
+          };
+        }
+
+        // Update auth user email if changed
+        try {
+          await supabase.auth.admin.updateUserById(userId, {
+            email: userData.email,
+            password: phone, // Keep password as phone
+            user_metadata: {
+              ...updatedProfile,
+              phone: phone,
+            },
+            email_confirm: true,
+          });
+        } catch (authError) {
+          logger.error('Error updating auth user:', authError);
+          // Continue even if auth update fails
+        }
+
+        logger.info(`User updated successfully: ${userId}`);
+
+        return {
+          success: true,
+          user: updatedProfile,
+          message: 'User updated successfully',
+        };
+      } else {
+        // New user - create auth user and profile
+        logger.info('Creating new user via admin');
+
+        try {
+          // Create auth user
+          const { data: authUser, error: authError } =
+            await supabase.auth.admin.createUser({
+              phone: phone,
+              email: userData.email,
+              password: phone, // Use phone as password
+              user_metadata: {
+                phone: phone,
+                role: userData.role,
+                name: userData.name,
+                email: userData.email,
+                organization_name: userData.organizationName || null,
+                organization_description:
+                  userData.organizationDescription || null,
+                experience: userData.experience || null,
+              },
+              email_confirm: true, // Auto-confirm for admin-created users
+            });
+
+          if (authError) {
+            logger.error('Error creating auth user:', authError);
+            return {
+              success: false,
+              message: 'Failed to create user account',
+              error: authError.message || 'Failed to create user account',
+            };
+          }
+
+          userId = authUser.user.id;
+
+          // Profile will be auto-created by database trigger
+          // Wait a moment for trigger to complete
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          // Fetch the created profile
+          const { data: newProfile, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+          if (profileError || !newProfile) {
+            logger.error('Profile not found after creation:', profileError);
+
+            // If profile doesn't exist, create it manually
+            const profileData = {
+              id: userId,
+              name: userData.name,
+              email: userData.email,
+              phone: phone,
+              role: userData.role,
+              organization_name: userData.organizationName || null,
+              organization_description: userData.organizationDescription || null,
+              experience: userData.experience || null,
+            };
+
+            const { data: manualProfile, error: manualError } = await supabase
+              .from('profiles')
+              .insert([profileData])
+              .select()
+              .single();
+
+            if (manualError) {
+              logger.error('Error creating profile manually:', manualError);
+              // Clean up auth user if profile creation fails
+              await supabase.auth.admin.deleteUser(userId);
+              return {
+                success: false,
+                message: 'Failed to create user profile',
+                error: 'Failed to create user profile',
+              };
+            }
+
+            logger.info(`User created successfully (manual profile): ${userId}`);
+
+            return {
+              success: true,
+              user: manualProfile,
+              message: 'User created successfully',
+            };
+          }
+
+          logger.info(`User created successfully: ${userId}`);
+
+          return {
+            success: true,
+            user: newProfile,
+            message: 'User created successfully',
+          };
+        } catch (error) {
+          logger.error('Exception during user creation:', error);
+          return {
+            success: false,
+            message: 'Failed to create user',
+            error: String(error),
+          };
+        }
+      }
+    } catch (error) {
+      logger.error('Error in adminRegisterUser service:', error);
+      return {
+        success: false,
+        message: 'Internal server error',
+        error: String(error),
       };
     }
   }
