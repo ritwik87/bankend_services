@@ -248,6 +248,9 @@ export class UserController {
                 'Role must be player, organizer, admin, or umpire',
               'any.required': 'Role is required',
             }),
+          duprId: Joi.string().min(5).allow('', null).optional().messages({
+            'string.min': 'DUPR ID must be at least 5 characters',
+          }),
           organizationName: Joi.string().min(2).allow('', null).optional().messages({
             'string.min': 'Organization name must be at least 2 characters',
           }),
