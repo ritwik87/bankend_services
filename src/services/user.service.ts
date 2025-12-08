@@ -275,6 +275,11 @@ export class UserService {
     date_of_birth?: string;
     dupr_id?: string;
     role?: string;
+    dupr_validated?: boolean;
+    dupr_validation_error?: string | null;
+    dupr_player_data?: any;
+    dupr_validated_at?: string | null;
+    dupr_validation_attempted_at?: string;
   }): Promise<{
     success: boolean;
     message: string;
@@ -293,6 +298,11 @@ export class UserService {
       if (userData.date_of_birth !== undefined) updateData.date_of_birth = userData.date_of_birth;
       if (userData.dupr_id !== undefined) updateData.dupr_id = userData.dupr_id;
       if (userData.role !== undefined) updateData.role = userData.role;
+      if (userData.dupr_validated !== undefined) updateData.dupr_validated = userData.dupr_validated;
+      if (userData.dupr_validation_error !== undefined) updateData.dupr_validation_error = userData.dupr_validation_error;
+      if (userData.dupr_player_data !== undefined) updateData.dupr_player_data = userData.dupr_player_data;
+      if (userData.dupr_validated_at !== undefined) updateData.dupr_validated_at = userData.dupr_validated_at;
+      if (userData.dupr_validation_attempted_at !== undefined) updateData.dupr_validation_attempted_at = userData.dupr_validation_attempted_at;
 
       const { error: profileError } = await supabase
         .from('profiles')
@@ -339,8 +349,9 @@ export class UserService {
   }
 
   /**
-   * Admin register user - Create/update user without OTP verification
+   * Admin register user - Create new user without OTP verification
    * Used by admin panel to register users directly
+   * IMPORTANT: This only creates NEW users, never updates existing ones
    */
   async adminRegisterUser(request: {
     phone: string;
@@ -351,6 +362,7 @@ export class UserService {
       organizationName?: string;
       organizationDescription?: string;
       experience?: string;
+      duprId?: string;
     };
   }): Promise<{
     success: boolean;
@@ -368,171 +380,160 @@ export class UserService {
         )}`
       );
 
-      // Check if user exists in profiles table
-      const { data: existingProfile } = await supabase
+      // Step 1: Check if phone number already exists
+      const { data: existingPhoneProfile } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, name, phone')
         .or(phoneOrCondition(phone))
         .single();
 
-      let userId: string;
-
-      if (existingProfile) {
-        // User exists - update their profile
-        userId = existingProfile.id;
-        logger.info(`Updating existing user: ${userId}`);
-
-        const updateData = {
-          name: userData.name,
-          email: userData.email,
-          role: userData.role,
-          organization_name: userData.organizationName || null,
-          organization_description: userData.organizationDescription || null,
-          experience: userData.experience || null,
-          updated_at: new Date().toISOString(),
+      if (existingPhoneProfile) {
+        logger.warn(`Phone number already exists: ${phone}`);
+        return {
+          success: false,
+          message: 'Phone number already exists',
+          error: `This phone number is already registered to user: ${existingPhoneProfile.name}`,
         };
+      }
 
-        const { data: updatedProfile, error: updateError } = await supabase
+      // Step 2: Check if email already exists
+      const { data: existingEmailProfile } = await supabase
+        .from('profiles')
+        .select('id, name, email')
+        .eq('email', userData.email)
+        .single();
+
+      if (existingEmailProfile) {
+        logger.warn(`Email already exists: ${userData.email}`);
+        return {
+          success: false,
+          message: 'Email already exists',
+          error: `This email is already registered to user: ${existingEmailProfile.name}`,
+        };
+      }
+
+      // Step 3: Check if DUPR ID already exists (if provided)
+      if (userData.duprId) {
+        const { data: existingDuprProfile } = await supabase
           .from('profiles')
-          .update(updateData)
-          .eq('id', userId)
-          .select()
+          .select('id, name, dupr_id')
+          .eq('dupr_id', userData.duprId)
           .single();
 
-        if (updateError) {
-          logger.error('Error updating profile:', updateError);
+        if (existingDuprProfile) {
+          logger.warn(`DUPR ID already exists: ${userData.duprId}`);
           return {
             success: false,
-            message: 'Failed to update user',
-            error: 'Failed to update user',
+            message: 'DUPR ID already exists',
+            error: `This DUPR ID is already registered to user: ${existingDuprProfile.name}`,
+          };
+        }
+      }
+
+      // All validations passed - create new user
+      let userId: string;
+
+      // Create new user - create auth user and profile
+      logger.info('Creating new user via admin');
+
+      try {
+        // Create auth user
+        const { data: authUser, error: authError } =
+          await supabase.auth.admin.createUser({
+            phone: phone,
+            email: userData.email,
+            password: phone, // Use phone as password
+            user_metadata: {
+              phone: phone,
+              role: userData.role,
+              name: userData.name,
+              email: userData.email,
+              organization_name: userData.organizationName || null,
+              organization_description:
+                userData.organizationDescription || null,
+              experience: userData.experience || null,
+            },
+            email_confirm: true, // Auto-confirm for admin-created users
+          });
+
+        if (authError) {
+          logger.error('Error creating auth user:', authError);
+          return {
+            success: false,
+            message: 'Failed to create user account',
+            error: authError.message || 'Failed to create user account',
           };
         }
 
-        // Update auth user email if changed
-        try {
-          await supabase.auth.admin.updateUserById(userId, {
+        userId = authUser.user.id;
+
+        // Profile will be auto-created by database trigger
+        // Wait a moment for trigger to complete
+        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        // Fetch the created profile
+        const { data: newProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        if (profileError || !newProfile) {
+          logger.error('Profile not found after creation:', profileError);
+
+          // If profile doesn't exist, create it manually
+          const profileData = {
+            id: userId,
+            name: userData.name,
             email: userData.email,
-            password: phone, // Keep password as phone
-            user_metadata: {
-              ...updatedProfile,
-              phone: phone,
-            },
-            email_confirm: true,
-          });
-        } catch (authError) {
-          logger.error('Error updating auth user:', authError);
-          // Continue even if auth update fails
-        }
+            phone: phone,
+            role: userData.role,
+            dupr_id: userData.duprId || null,
+            organization_name: userData.organizationName || null,
+            organization_description: userData.organizationDescription || null,
+            experience: userData.experience || null,
+          };
 
-        logger.info(`User updated successfully: ${userId}`);
-
-        return {
-          success: true,
-          user: updatedProfile,
-          message: 'User updated successfully',
-        };
-      } else {
-        // New user - create auth user and profile
-        logger.info('Creating new user via admin');
-
-        try {
-          // Create auth user
-          const { data: authUser, error: authError } =
-            await supabase.auth.admin.createUser({
-              phone: phone,
-              email: userData.email,
-              password: phone, // Use phone as password
-              user_metadata: {
-                phone: phone,
-                role: userData.role,
-                name: userData.name,
-                email: userData.email,
-                organization_name: userData.organizationName || null,
-                organization_description:
-                  userData.organizationDescription || null,
-                experience: userData.experience || null,
-              },
-              email_confirm: true, // Auto-confirm for admin-created users
-            });
-
-          if (authError) {
-            logger.error('Error creating auth user:', authError);
-            return {
-              success: false,
-              message: 'Failed to create user account',
-              error: authError.message || 'Failed to create user account',
-            };
-          }
-
-          userId = authUser.user.id;
-
-          // Profile will be auto-created by database trigger
-          // Wait a moment for trigger to complete
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          // Fetch the created profile
-          const { data: newProfile, error: profileError } = await supabase
+          const { data: manualProfile, error: manualError } = await supabase
             .from('profiles')
-            .select('*')
-            .eq('id', userId)
+            .insert([profileData])
+            .select()
             .single();
 
-          if (profileError || !newProfile) {
-            logger.error('Profile not found after creation:', profileError);
-
-            // If profile doesn't exist, create it manually
-            const profileData = {
-              id: userId,
-              name: userData.name,
-              email: userData.email,
-              phone: phone,
-              role: userData.role,
-              organization_name: userData.organizationName || null,
-              organization_description: userData.organizationDescription || null,
-              experience: userData.experience || null,
-            };
-
-            const { data: manualProfile, error: manualError } = await supabase
-              .from('profiles')
-              .insert([profileData])
-              .select()
-              .single();
-
-            if (manualError) {
-              logger.error('Error creating profile manually:', manualError);
-              // Clean up auth user if profile creation fails
-              await supabase.auth.admin.deleteUser(userId);
-              return {
-                success: false,
-                message: 'Failed to create user profile',
-                error: 'Failed to create user profile',
-              };
-            }
-
-            logger.info(`User created successfully (manual profile): ${userId}`);
-
+          if (manualError) {
+            logger.error('Error creating profile manually:', manualError);
+            // Clean up auth user if profile creation fails
+            await supabase.auth.admin.deleteUser(userId);
             return {
-              success: true,
-              user: manualProfile,
-              message: 'User created successfully',
+              success: false,
+              message: 'Failed to create user profile',
+              error: 'Failed to create user profile',
             };
           }
 
-          logger.info(`User created successfully: ${userId}`);
+          logger.info(`User created successfully (manual profile): ${userId}`);
 
           return {
             success: true,
-            user: newProfile,
+            user: manualProfile,
             message: 'User created successfully',
           };
-        } catch (error) {
-          logger.error('Exception during user creation:', error);
-          return {
-            success: false,
-            message: 'Failed to create user',
-            error: String(error),
-          };
         }
+
+        logger.info(`User created successfully: ${userId}`);
+
+        return {
+          success: true,
+          user: newProfile,
+          message: 'User created successfully',
+        };
+      } catch (error) {
+        logger.error('Exception during user creation:', error);
+        return {
+          success: false,
+          message: 'Failed to create user',
+          error: String(error),
+        };
       }
     } catch (error) {
       logger.error('Error in adminRegisterUser service:', error);
