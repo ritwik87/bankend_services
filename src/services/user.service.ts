@@ -544,6 +544,101 @@ export class UserService {
       };
     }
   }
+
+  /**
+   * Register user for bulk operations - returns existing user if phone exists
+   * This is different from adminRegisterUser which rejects duplicates
+   */
+  async bulkRegisterUser(request: {
+    phone: string;
+    userData: {
+      name: string;
+      email: string;
+      role: 'player' | 'organizer' | 'admin' | 'umpire';
+      organizationName?: string;
+      organizationDescription?: string;
+      experience?: string;
+      duprId?: string;
+    };
+  }): Promise<{
+    success: boolean;
+    user?: any;
+    message: string;
+    error?: string;
+    isExisting?: boolean;
+  }> {
+    try {
+      const { phone, userData } = request;
+
+      logger.info(
+        `Bulk registering user for phone: ${phone.replace(
+          /(.{3})(.*)(.{2})/,
+          '$1***$3'
+        )}`
+      );
+
+      // Step 1: Check if phone number already exists
+      const { data: existingPhoneProfile } = await supabase
+        .from('profiles')
+        .select('id, name, phone, email, role')
+        .or(phoneOrCondition(phone))
+        .single();
+
+      if (existingPhoneProfile) {
+        logger.info(`Phone number already exists, returning existing user: ${phone}`);
+        return {
+          success: true,
+          user: existingPhoneProfile,
+          message: 'User already exists',
+          isExisting: true,
+        };
+      }
+
+      // Step 2: Check if email already exists (only for new users)
+      const { data: existingEmailProfile } = await supabase
+        .from('profiles')
+        .select('id, name, email')
+        .eq('email', userData.email)
+        .single();
+
+      if (existingEmailProfile) {
+        logger.warn(`Email already exists: ${userData.email}`);
+        return {
+          success: false,
+          message: 'Email already exists',
+          error: `This email is already registered to user: ${existingEmailProfile.name}`,
+        };
+      }
+
+      // Step 3: Check if DUPR ID already exists (if provided, only for new users)
+      if (userData.duprId) {
+        const { data: existingDuprProfile } = await supabase
+          .from('profiles')
+          .select('id, name, dupr_id')
+          .eq('dupr_id', userData.duprId)
+          .single();
+
+        if (existingDuprProfile) {
+          logger.warn(`DUPR ID already exists: ${userData.duprId}`);
+          return {
+            success: false,
+            message: 'DUPR ID already exists',
+            error: `This DUPR ID is already registered to user: ${existingDuprProfile.name}`,
+          };
+        }
+      }
+
+      // User doesn't exist - create new user using existing logic
+      return await this.adminRegisterUser(request);
+    } catch (error) {
+      logger.error('Error in bulkRegisterUser service:', error);
+      return {
+        success: false,
+        message: 'Internal server error',
+        error: String(error),
+      };
+    }
+  }
 }
 
 export const userService = new UserService();
