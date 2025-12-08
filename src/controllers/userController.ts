@@ -1,11 +1,8 @@
 import { Request, Response } from 'express';
-import { userService } from '../services/user.service';
-import {
-  UpdateEmailRequest,
-  ValidateEmailRequest,
-} from '../types/user.types';
-import logger from '../utils/logger';
 import Joi from 'joi';
+import { userService } from '../services/user.service';
+import { UpdateEmailRequest, ValidateEmailRequest } from '../types/user.types';
+import logger from '../utils/logger';
 
 // Validation schemas
 const updateEmailSchema = Joi.object({
@@ -26,12 +23,12 @@ export class UserController {
   async updateEmail(req: Request, res: Response): Promise<void> {
     try {
       const { error, value } = updateEmailSchema.validate(req.body);
-      
+
       if (error) {
         res.status(400).json({
           success: false,
           message: 'Validation error',
-          error: error.details[0].message
+          error: error.details[0].message,
         });
         return;
       }
@@ -51,7 +48,6 @@ export class UserController {
       } else {
         res.status(400).json(result);
       }
-
     } catch (error) {
       logger.error('Error in updateEmail controller:', error);
       res.status(500).json({
@@ -68,12 +64,12 @@ export class UserController {
   async validateEmailAvailability(req: Request, res: Response): Promise<void> {
     try {
       const { error, value } = validateEmailSchema.validate(req.query);
-      
+
       if (error) {
         res.status(400).json({
           success: false,
           available: false,
-          error: error.details[0].message
+          error: error.details[0].message,
         });
         return;
       }
@@ -95,7 +91,6 @@ export class UserController {
       } else {
         res.status(400).json(result);
       }
-
     } catch (error) {
       logger.error('Error in validateEmailAvailability controller:', error);
       res.status(500).json({
@@ -244,20 +239,27 @@ export class UserController {
             .valid('player', 'organizer', 'admin', 'umpire')
             .required()
             .messages({
-              'any.only':
-                'Role must be player, organizer, admin, or umpire',
+              'any.only': 'Role must be player, organizer, admin, or umpire',
               'any.required': 'Role is required',
             }),
           duprId: Joi.string().min(5).allow('', null).optional().messages({
             'string.min': 'DUPR ID must be at least 5 characters',
           }),
-          organizationName: Joi.string().min(2).allow('', null).optional().messages({
-            'string.min': 'Organization name must be at least 2 characters',
-          }),
-          organizationDescription: Joi.string().min(10).allow('', null).optional().messages({
-            'string.min':
-              'Organization description must be at least 10 characters',
-          }),
+          organizationName: Joi.string()
+            .min(2)
+            .allow('', null)
+            .optional()
+            .messages({
+              'string.min': 'Organization name must be at least 2 characters',
+            }),
+          organizationDescription: Joi.string()
+            .min(10)
+            .allow('', null)
+            .optional()
+            .messages({
+              'string.min':
+                'Organization description must be at least 10 characters',
+            }),
           experience: Joi.string().min(5).allow('', null).optional().messages({
             'string.min': 'Experience must be at least 5 characters',
           }),
@@ -306,13 +308,179 @@ export class UserController {
   }
 
   /**
+   * Bulk register users - Register multiple users at once
+   */
+  async bulkRegisterUsers(req: Request, res: Response): Promise<void> {
+    try {
+      // Validation schema for bulk registration
+      const schema = Joi.object({
+        users: Joi.array()
+          .items(
+            Joi.object({
+              phone: Joi.string()
+                .pattern(/^\+[1-9]\d{1,3}[0-9]{6,14}$/)
+                .required()
+                .messages({
+                  'string.pattern.base':
+                    'Phone number must be a valid international number (e.g. +919876543210)',
+                  'any.required': 'Phone number is required',
+                }),
+              userData: Joi.object({
+                name: Joi.string().min(2).required().messages({
+                  'string.min': 'Name must be at least 2 characters',
+                  'any.required': 'Name is required',
+                }),
+                email: Joi.string().email().required().messages({
+                  'string.email': 'Valid email is required',
+                  'any.required': 'Email is required',
+                }),
+                role: Joi.string()
+                  .valid('player', 'organizer', 'admin', 'umpire')
+                  .required()
+                  .messages({
+                    'any.only':
+                      'Role must be player, organizer, admin, or umpire',
+                    'any.required': 'Role is required',
+                  }),
+                duprId: Joi.string()
+                  .min(5)
+                  .allow('', null)
+                  .optional()
+                  .messages({
+                    'string.min': 'DUPR ID must be at least 5 characters',
+                  }),
+                organizationName: Joi.string()
+                  .min(2)
+                  .allow('', null)
+                  .optional()
+                  .messages({
+                    'string.min':
+                      'Organization name must be at least 2 characters',
+                  }),
+                organizationDescription: Joi.string()
+                  .min(10)
+                  .allow('', null)
+                  .optional()
+                  .messages({
+                    'string.min':
+                      'Organization description must be at least 10 characters',
+                  }),
+                experience: Joi.string()
+                  .min(5)
+                  .allow('', null)
+                  .optional()
+                  .messages({
+                    'string.min': 'Experience must be at least 5 characters',
+                  }),
+              })
+                .required()
+                .messages({
+                  'any.required': 'User data is required',
+                }),
+            })
+          )
+          .min(1)
+          .required()
+          .messages({
+            'array.min': 'At least one user is required',
+            'any.required': 'Users array is required',
+          }),
+      });
+
+      const { error, value } = schema.validate(req.body);
+
+      if (error) {
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          error: error.details[0].message,
+        });
+        return;
+      }
+
+      const { users } = value;
+
+      logger.info(`Bulk registering ${users.length} users`);
+
+      // -------------------------------
+      // 🚀 Execute all user creation in parallel
+      // Using bulkRegisterUser which returns existing users instead of rejecting
+      // -------------------------------
+      const results = await Promise.all(
+        users.map(async (userRequest: any) => {
+          try {
+            const result = await userService.bulkRegisterUser({
+              phone: userRequest.phone,
+              userData: userRequest.userData,
+            });
+
+            if (result.success) {
+              return {
+                success: true,
+                user: result.user,
+                message: result.message,
+                phone: userRequest.phone,
+                name: userRequest.userData.name,
+                isExisting: result.isExisting || false,
+              };
+            }
+
+            return {
+              success: false,
+              message: result.message,
+              error: result.error,
+              phone: userRequest.phone,
+              name: userRequest.userData.name,
+            };
+          } catch (error) {
+            return {
+              success: false,
+              message: 'Failed to register user',
+              error: error instanceof Error ? error.message : 'Unknown error',
+              phone: userRequest.phone,
+              name: userRequest.userData.name,
+            };
+          }
+        })
+      );
+
+      // -------------------------------
+      // ✓ Calculate summary
+      // -------------------------------
+      const successful = results.filter((r) => r.success).length;
+      const failed = results.length - successful;
+
+      logger.info(
+        `Bulk registration complete: ${successful} successful, ${failed} failed`
+      );
+
+      res.status(200).json({
+        success: true,
+        results,
+        summary: {
+          total: users.length,
+          successful,
+          failed,
+        },
+      });
+    } catch (error) {
+      logger.error('Error in bulkRegisterUsers controller:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: 'Internal server error',
+      });
+    }
+  }
+
+  /**
    * Health check for user service
    */
   async healthCheck(req: Request, res: Response): Promise<void> {
     res.status(200).json({
       success: true,
       message: 'User service is healthy',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 }

@@ -9,7 +9,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 // Apply rate limiting to all user routes
-router.use(duprApiLimiter);
+// router.use(duprApiLimiter);
 
 /**
  * @swagger
@@ -352,5 +352,117 @@ router.post('/update', requireAdmin, userController.updateUser);
  *         description: Internal server error
  */
 router.post('/admin-register', requireAdmin, userController.adminRegisterUser);
+
+/**
+ * @swagger
+ * /api/user/bulk-register:
+ *   post:
+ *     summary: Bulk register multiple users (admin only)
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - users
+ *             properties:
+ *               users:
+ *                 type: array
+ *                 minItems: 1
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - phone
+ *                     - userData
+ *                   properties:
+ *                     phone:
+ *                       type: string
+ *                       description: Phone number in E.164 format
+ *                       example: "+919876543210"
+ *                       pattern: "^\\+[1-9]\\d{1,3}[0-9]{6,14}$"
+ *                     userData:
+ *                       type: object
+ *                       required:
+ *                         - name
+ *                         - email
+ *                         - role
+ *                       properties:
+ *                         name:
+ *                           type: string
+ *                           minLength: 2
+ *                           example: "John Doe"
+ *                         email:
+ *                           type: string
+ *                           format: email
+ *                           example: "john@example.com"
+ *                         role:
+ *                           type: string
+ *                           enum: [player, organizer, admin, umpire]
+ *                           example: "player"
+ *                         duprId:
+ *                           type: string
+ *                           minLength: 5
+ *                           example: "ABC123"
+ *                         organizationName:
+ *                           type: string
+ *                           minLength: 2
+ *                           example: "Sports Club"
+ *                         organizationDescription:
+ *                           type: string
+ *                           minLength: 10
+ *                           example: "Local sports organization"
+ *                         experience:
+ *                           type: string
+ *                           minLength: 5
+ *                           example: "5 years of tournament organization"
+ *     responses:
+ *       200:
+ *         description: Bulk registration completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 results:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       success:
+ *                         type: boolean
+ *                       user:
+ *                         type: object
+ *                       message:
+ *                         type: string
+ *                       error:
+ *                         type: string
+ *                       phone:
+ *                         type: string
+ *                       name:
+ *                         type: string
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: number
+ *                     successful:
+ *                       type: number
+ *                     failed:
+ *                       type: number
+ *       400:
+ *         description: Bad request - validation error
+ *       403:
+ *         description: Admin access required
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/bulk-register', requireAdmin, userController.bulkRegisterUsers);
 
 export default router;
