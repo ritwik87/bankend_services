@@ -5,6 +5,7 @@ import {
   DuprValidationResponse,
 } from '../types/dupr.types';
 import logger from '../utils/logger';
+import supabase from '../utils/supabase';
 import duprAuthService from './duprAuth.service';
 
 class DuprPlayerService {
@@ -225,6 +226,292 @@ class DuprPlayerService {
     } catch (error) {
       logger.error(`Player search failed for query: ${query}`, error);
       return [];
+    }
+  }
+
+  async batchUpdatePlayersDuprData({
+    leagueId,
+    batchSize = 10,
+  }: {
+    leagueId?: string;
+    batchSize?: number;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    processed: number;
+    updated: number;
+    errors: number;
+    results?: Array<{
+      userId: string;
+      duprId: string;
+      success: boolean;
+      error?: string;
+    }>;
+    error?: string;
+  }> {
+    try {
+      logger.info(
+        `Starting batch DUPR data update with league_id: ${
+          leagueId || 'all'
+        }, batch size: ${batchSize}`
+      );
+
+      let users: any[] = [];
+
+      if (leagueId) {
+        // Get users registered in the specific league
+        logger.info(`Fetching players registered in league: ${leagueId}`);
+        const { data: leagueUsers, error: leagueUsersError } = await supabase
+          .from('league_registrations')
+          .select(
+            `
+            profiles!league_registrations_player_id_fkey(
+              id,
+              dupr_id,
+              name,
+              email
+            )
+          `
+          )
+          .eq('league_id', leagueId)
+          .not('profiles.dupr_id', 'is', null)
+          .not('profiles.dupr_id', 'eq', '');
+
+        if (leagueUsersError) {
+          logger.error('Failed to fetch league users:', leagueUsersError);
+          return {
+            success: false,
+            message: 'Failed to fetch users from league registrations',
+            processed: 0,
+            updated: 0,
+            errors: 1,
+            error: leagueUsersError.message,
+          };
+        }
+
+        console.log('player res', JSON.stringify(leagueUsers));
+
+        // Extract unique users from league registrations
+        const uniqueUserMap = new Map();
+        leagueUsers?.forEach((registration: any) => {
+          if (registration.profiles) {
+            uniqueUserMap.set(registration.profiles.id, registration.profiles);
+          }
+        });
+        users = Array.from(uniqueUserMap.values());
+      } else {
+        // Get all users who have a dupr_id
+        logger.info('Fetching all users with DUPR IDs');
+        const { data: allUsers, error: allUsersError } = await supabase
+          .from('profiles')
+          .select('id, dupr_id, name, email')
+          .not('dupr_id', 'is', null)
+          .not('dupr_id', 'eq', '');
+
+        if (allUsersError) {
+          logger.error(
+            'Failed to fetch all users with DUPR IDs:',
+            allUsersError
+          );
+          return {
+            success: false,
+            message: 'Failed to fetch users from database',
+            processed: 0,
+            updated: 0,
+            errors: 1,
+            error: allUsersError.message,
+          };
+        }
+
+        users = allUsers || [];
+      }
+
+      if (!users || users.length === 0) {
+        logger.info(
+          `No users with DUPR IDs found ${
+            leagueId ? 'in the specified league' : ''
+          }`
+        );
+        return {
+          success: true,
+          message: `No users with DUPR IDs found ${
+            leagueId ? 'in the specified league' : ''
+          }`,
+          processed: 0,
+          updated: 0,
+          errors: 0,
+        };
+      }
+
+      logger.info(
+        `Found ${users.length} users to update ${
+          leagueId ? 'in league ' + leagueId : 'across all users'
+        }`
+      );
+
+      // Process users in batches
+      const results: Array<{
+        userId: string;
+        duprId: string;
+        success: boolean;
+        error?: string;
+      }> = [];
+
+      let updated = 0;
+      let errors = 0;
+
+      // Process in batches of specified size
+      for (let i = 0; i < users.length; i += batchSize) {
+        const batch = users.slice(i, i + batchSize);
+        logger.info(
+          `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
+            users.length / batchSize
+          )} (${batch.length} users)`
+        );
+
+        // Process each batch using Promise.allSettled to handle individual failures
+        const batchResults = await Promise.allSettled(
+          batch.map(async (user) => {
+            try {
+              logger.info(
+                `Updating DUPR data for user ${user.id} (DUPR ID: ${user.dupr_id})`
+              );
+
+              // Validate player to get latest data
+              const validationResponse = await this.validatePlayer({
+                duprId: user.dupr_id,
+              });
+
+              if (validationResponse.isValid && validationResponse.player) {
+                // Update user's DUPR data in the database (matching main project pattern)
+                const { error: updateError } = await supabase
+                  .from('profiles')
+                  .update({
+                    dupr_validated: true,
+                    dupr_validation_error: null,
+                    dupr_player_data: validationResponse.player,
+                    dupr_validated_at: new Date().toISOString(),
+                    dupr_validation_attempted_at: new Date().toISOString(),
+                  })
+                  .eq('id', user.id);
+
+                if (updateError) {
+                  logger.error(
+                    `Failed to update DUPR data for user ${user.id}:`,
+                    updateError
+                  );
+                  return {
+                    userId: user.id,
+                    duprId: user.dupr_id,
+                    success: false,
+                    error: updateError.message,
+                  };
+                }
+
+                logger.info(
+                  `Successfully updated DUPR data for user ${user.id}`
+                );
+                return {
+                  userId: user.id,
+                  duprId: user.dupr_id,
+                  success: true,
+                };
+              } else {
+                // Store validation failure in database (matching main project pattern)
+                const validationError =
+                  validationResponse.error || 'Player validation failed';
+
+                const { error: updateError } = await supabase
+                  .from('profiles')
+                  .update({
+                    dupr_validated: false,
+                    dupr_validation_error: validationError,
+                    dupr_validated_at: null,
+                    dupr_validation_attempted_at: new Date().toISOString(),
+                  })
+                  .eq('id', user.id);
+
+                if (updateError) {
+                  logger.error(
+                    `Failed to update DUPR validation failure for user ${user.id}:`,
+                    updateError
+                  );
+                }
+
+                logger.warn(
+                  `Failed to validate DUPR player ${user.dupr_id} for user ${user.id}: ${validationError}`
+                );
+                return {
+                  userId: user.id,
+                  duprId: user.dupr_id,
+                  success: false,
+                  error: validationError,
+                };
+              }
+            } catch (error: any) {
+              logger.error(`Error processing user ${user.id}:`, error);
+              return {
+                userId: user.id,
+                duprId: user.dupr_id,
+                success: false,
+                error: error.message || 'Unknown error occurred',
+              };
+            }
+          })
+        );
+
+        // Process batch results
+        batchResults.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            results.push(result.value);
+            if (result.value.success) {
+              updated++;
+            } else {
+              errors++;
+            }
+          } else {
+            errors++;
+            results.push({
+              userId: 'unknown',
+              duprId: 'unknown',
+              success: false,
+              error: result.reason?.message || 'Promise rejected',
+            });
+          }
+        });
+
+        // Add a small delay between batches to avoid overwhelming the DUPR API
+        if (i + batchSize < users.length) {
+          logger.info('Waiting 2 seconds before processing next batch...');
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+
+      const processed = users.length;
+      const successMessage = `Batch DUPR update completed: ${updated} updated, ${errors} errors out of ${processed} users processed ${
+        leagueId ? 'in league ' + leagueId : ''
+      }`;
+
+      logger.info(successMessage);
+
+      return {
+        success: true,
+        message: successMessage,
+        processed,
+        updated,
+        errors,
+        results,
+      };
+    } catch (error: any) {
+      logger.error('Batch DUPR update failed:', error);
+      return {
+        success: false,
+        message: 'Batch DUPR update failed due to server error',
+        processed: 0,
+        updated: 0,
+        errors: 1,
+        error: error.message || 'Unknown server error',
+      };
     }
   }
 }

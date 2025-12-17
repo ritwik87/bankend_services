@@ -625,6 +625,47 @@ export class DuprController {
       res.status(500).json(response);
     }
   }
+
+  async batchUpdatePlayersDuprData(req: Request, res: Response): Promise<void> {
+    try {
+      logger.info('Starting batch DUPR data update');
+
+      const { league_id } = req.query;
+
+      const batchUpdateResponse = await duprPlayerService.batchUpdatePlayersDuprData({
+        leagueId: league_id as string | undefined,
+        batchSize: 10
+      });
+
+      if (batchUpdateResponse.success) {
+        const response: ApiResponse<typeof batchUpdateResponse> = {
+          success: true,
+          data: batchUpdateResponse,
+          message: `Batch DUPR update completed: ${batchUpdateResponse.updated} updated, ${batchUpdateResponse.errors} errors out of ${batchUpdateResponse.processed} players processed`,
+        };
+
+        res.status(200).json(response);
+      } else {
+        const response: ApiResponse<null> = {
+          success: false,
+          error: batchUpdateResponse.error || 'Batch update failed',
+          message: batchUpdateResponse.message || 'Failed to complete batch DUPR update',
+        };
+
+        res.status(500).json(response);
+      }
+    } catch (error: any) {
+      logger.error('Batch update DUPR data controller error', error);
+
+      const response: ApiResponse<null> = {
+        success: false,
+        error: error.message || 'Internal server error',
+        message: 'Failed to complete batch DUPR data update',
+      };
+
+      res.status(500).json(response);
+    }
+  }
 }
 
 export default new DuprController();

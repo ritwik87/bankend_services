@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import duprController from '../controllers/duprController';
 import { duprApiLimiter } from '../middleware/rateLimiter';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -776,5 +776,142 @@ router.delete('/delete-event/:eventId', duprController.deleteEvent);
  *         description: Internal server error
  */
 router.get('/get-event/:eventId', duprController.getEvent);
+
+/**
+ * @swagger
+ * /api/dupr/batch-update-players:
+ *   post:
+ *     tags:
+ *       - DUPR Batch Operations
+ *     summary: Batch Update Players DUPR Data
+ *     description: Update DUPR data for multiple players in batches. Can update all players with DUPR IDs or filter by specific league. Admin access required.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: league_id
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Optional league ID to filter players. If provided, only updates players registered in that league.
+ *         example: "league-123"
+ *     responses:
+ *       200:
+ *         description: Batch update completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/ApiResponse'
+ *                 - type: object
+ *                   properties:
+ *                     data:
+ *                       type: object
+ *                       properties:
+ *                         success:
+ *                           type: boolean
+ *                           description: Overall operation success
+ *                         message:
+ *                           type: string
+ *                           description: Summary of the batch operation
+ *                         processed:
+ *                           type: number
+ *                           description: Total number of players processed
+ *                         updated:
+ *                           type: number
+ *                           description: Number of players successfully updated
+ *                         errors:
+ *                           type: number
+ *                           description: Number of players that failed to update
+ *                         results:
+ *                           type: array
+ *                           description: Detailed results for each player
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               userId:
+ *                                 type: string
+ *                                 description: User ID processed
+ *                               duprId:
+ *                                 type: string
+ *                                 description: DUPR ID of the player
+ *                               success:
+ *                                 type: boolean
+ *                                 description: Whether this player was updated successfully
+ *                               error:
+ *                                 type: string
+ *                                 description: Error message if update failed
+ *             examples:
+ *               allPlayersSuccess:
+ *                 summary: Successful batch update for all players
+ *                 value:
+ *                   success: true
+ *                   data:
+ *                     success: true
+ *                     message: "Batch DUPR update completed: 25 updated, 0 errors out of 25 players processed"
+ *                     processed: 25
+ *                     updated: 25
+ *                     errors: 0
+ *                     results:
+ *                       - userId: "user-123"
+ *                         duprId: "4581541063"
+ *                         success: true
+ *                       - userId: "user-456"
+ *                         duprId: "9876543210"
+ *                         success: true
+ *                   message: "Batch DUPR update completed: 25 updated, 0 errors out of 25 players processed"
+ *               leaguePlayersWithErrors:
+ *                 summary: League-specific update with some errors
+ *                 value:
+ *                   success: true
+ *                   data:
+ *                     success: true
+ *                     message: "Batch DUPR update completed: 8 updated, 2 errors out of 10 users processed in league league-123"
+ *                     processed: 10
+ *                     updated: 8
+ *                     errors: 2
+ *                     results:
+ *                       - userId: "user-123"
+ *                         duprId: "4581541063"
+ *                         success: true
+ *                       - userId: "user-456"
+ *                         duprId: "invalid-id"
+ *                         success: false
+ *                         error: "Player not found in DUPR database"
+ *                   message: "Batch DUPR update completed: 8 updated, 2 errors out of 10 users processed in league league-123"
+ *       400:
+ *         description: Bad request - invalid parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               invalidLeagueId:
+ *                 summary: Invalid league ID
+ *                 value:
+ *                   success: false
+ *                   error: "Invalid league ID"
+ *                   message: "The specified league ID does not exist"
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       403:
+ *         description: Forbidden - admin access required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             examples:
+ *               notAdmin:
+ *                 summary: Admin access required
+ *                 value:
+ *                   success: false
+ *                   error: "Forbidden"
+ *                   message: "Admin access required"
+ *       429:
+ *         $ref: '#/components/responses/TooManyRequests'
+ *       500:
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.post('/batch-update-players', requireAdmin, duprController.batchUpdatePlayersDuprData);
 
 export default router;
