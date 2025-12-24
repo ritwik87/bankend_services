@@ -1166,5 +1166,13 @@
     "name": "Dummy Player 146",
     "email": "dummy.player146@yopmail.com",
     "password": "9999999746"
+  },
+  {
+    "phone": "9999988881",
+    "otp": "999999",
+    "role": "umpire",
+    "name": "Dummy Umpire 1",
+    "email": "dummy.umpire1@yopmail.com",
+    "password": "9999988881"
   }
 ]
