@@ -1,12 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import logger from '../utils/logger';
-import { phoneOrCondition } from '../utils/helper';
 import {
   UpdateEmailRequest,
   UpdateEmailResponse,
   ValidateEmailRequest,
   ValidateEmailResponse,
 } from '../types/user.types';
+import { phoneOrCondition } from '../utils/helper';
+import logger from '../utils/logger';
 
 // Initialize Supabase client with service role key for admin operations
 const supabase = createClient(
@@ -25,8 +25,9 @@ export class UserService {
       const { email, excludeUserId } = request;
 
       // Check in auth.users table
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
+      const { data: authUsers, error: authError } =
+        await supabase.auth.admin.listUsers();
+
       if (authError) {
         logger.error('Error checking email in auth.users:', authError);
         return {
@@ -38,7 +39,7 @@ export class UserService {
 
       // Check if email already exists (excluding the current user if provided)
       const emailExists = authUsers.users.some(
-        user => user.email === email && user.id !== excludeUserId
+        (user) => user.email === email && user.id !== excludeUserId
       );
 
       if (emailExists) {
@@ -150,7 +151,7 @@ export class UserService {
 
       if (profileError) {
         logger.error('Error updating email in profiles:', profileError);
-        
+
         // Try to rollback auth email change
         try {
           await supabase.auth.admin.updateUserById(userId, {
@@ -167,7 +168,9 @@ export class UserService {
         };
       }
 
-      logger.info(`Email updated successfully for user ${userId}: ${currentEmail} -> ${newEmail}`);
+      logger.info(
+        `Email updated successfully for user ${userId}: ${currentEmail} -> ${newEmail}`
+      );
 
       return {
         success: true,
@@ -267,20 +270,23 @@ export class UserService {
   /**
    * Update user profile information
    */
-  async updateUser(userId: string, userData: {
-    name?: string;
-    email?: string;
-    phone?: string;
-    age?: number;
-    date_of_birth?: string;
-    dupr_id?: string;
-    role?: string;
-    dupr_validated?: boolean;
-    dupr_validation_error?: string | null;
-    dupr_player_data?: any;
-    dupr_validated_at?: string | null;
-    dupr_validation_attempted_at?: string;
-  }): Promise<{
+  async updateUser(
+    userId: string,
+    userData: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      age?: number;
+      date_of_birth?: string;
+      dupr_id?: string;
+      role?: string;
+      dupr_validated?: boolean;
+      dupr_validation_error?: string | null;
+      dupr_player_data?: any;
+      dupr_validated_at?: string | null;
+      dupr_validation_attempted_at?: string;
+    }
+  ): Promise<{
     success: boolean;
     message: string;
     error?: string;
@@ -295,14 +301,21 @@ export class UserService {
       if (userData.email !== undefined) updateData.email = userData.email;
       if (userData.phone !== undefined) updateData.phone = userData.phone;
       if (userData.age !== undefined) updateData.age = userData.age;
-      if (userData.date_of_birth !== undefined) updateData.date_of_birth = userData.date_of_birth;
+      if (userData.date_of_birth !== undefined)
+        updateData.date_of_birth = userData.date_of_birth;
       if (userData.dupr_id !== undefined) updateData.dupr_id = userData.dupr_id;
       if (userData.role !== undefined) updateData.role = userData.role;
-      if (userData.dupr_validated !== undefined) updateData.dupr_validated = userData.dupr_validated;
-      if (userData.dupr_validation_error !== undefined) updateData.dupr_validation_error = userData.dupr_validation_error;
-      if (userData.dupr_player_data !== undefined) updateData.dupr_player_data = userData.dupr_player_data;
-      if (userData.dupr_validated_at !== undefined) updateData.dupr_validated_at = userData.dupr_validated_at;
-      if (userData.dupr_validation_attempted_at !== undefined) updateData.dupr_validation_attempted_at = userData.dupr_validation_attempted_at;
+      if (userData.dupr_validated !== undefined)
+        updateData.dupr_validated = userData.dupr_validated;
+      if (userData.dupr_validation_error !== undefined)
+        updateData.dupr_validation_error = userData.dupr_validation_error;
+      if (userData.dupr_player_data !== undefined)
+        updateData.dupr_player_data = userData.dupr_player_data;
+      if (userData.dupr_validated_at !== undefined)
+        updateData.dupr_validated_at = userData.dupr_validated_at;
+      if (userData.dupr_validation_attempted_at !== undefined)
+        updateData.dupr_validation_attempted_at =
+          userData.dupr_validation_attempted_at;
 
       const { error: profileError } = await supabase
         .from('profiles')
@@ -320,10 +333,17 @@ export class UserService {
 
       // If email is updated, also update in auth
       if (userData.email) {
-        const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
-          email: userData.email,
-          email_confirm: true,
-        });
+        const { error: authError } = await supabase.auth.admin.updateUserById(
+          userId,
+          {
+            email: userData.email,
+            email_confirm: true,
+            user_metadata: {
+              role: userData.role,
+              email: userData.email,
+            },
+          }
+        );
 
         if (authError) {
           logger.error('Error updating user email in auth:', authError);
@@ -585,7 +605,9 @@ export class UserService {
         .single();
 
       if (existingPhoneProfile) {
-        logger.info(`Phone number already exists, returning existing user: ${phone}`);
+        logger.info(
+          `Phone number already exists, returning existing user: ${phone}`
+        );
         return {
           success: true,
           user: existingPhoneProfile,
