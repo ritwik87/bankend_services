@@ -955,6 +955,55 @@ class OtpService {
           error: 'Failed to create partner user',
         };
       }
+      if (profile.role === 'guest') {
+        try {
+          // Update auth metadata
+          const { error: authUpdateError } =
+            await supabase.auth.admin.updateUserById(profile.id, {
+              user_metadata: {
+                // ...profile,
+                role: 'player',
+              },
+            });
+
+          if (authUpdateError) {
+            logger.error('Auth role update failed:', authUpdateError);
+            return {
+              success: false,
+              userExists: true,
+              isPlayer: false,
+              error: 'Failed to upgrade user role',
+            };
+          }
+
+          // Update profiles table
+          const { error: profileUpdateError } = await supabase
+            .from('profiles')
+            .update({ role: 'player' })
+            .eq('id', profile.id);
+
+          if (profileUpdateError) {
+            logger.error('Profile role update failed:', profileUpdateError);
+            return {
+              success: false,
+              userExists: true,
+              isPlayer: false,
+              error: 'Failed to upgrade user role',
+            };
+          }
+
+          // 3️⃣ Update local object so rest of logic works correctly
+          profile.role = 'player';
+        } catch (error) {
+          logger.error('Error upgrading guest to player:', error);
+          return {
+            success: false,
+            userExists: true,
+            isPlayer: false,
+            error: 'Internal server error',
+          };
+        }
+      }
 
       // Check if user is a registered player (not guest)
       const isPlayer =
