@@ -942,7 +942,9 @@ class OtpService {
       // Check if user exists after user creation (which creates guest users)
       const { data: profile, error } = await supabase
         .from('profiles')
-        .select('id, role, name, email')
+        .select(
+          'id, role, name, email, phone, age, dupr_id, profile_picture_url, profile_picture_crop_metadata, date_of_birth, role, gender'
+        )
         .or(phoneOrCondition(phone))
         .single();
 
@@ -1018,6 +1020,7 @@ class OtpService {
             isPlayer: false,
             needsRegistration: true,
             user: {
+              ...profile,
               id: profile.id,
               role: profile.role,
               name: profile.name || '',
@@ -1049,6 +1052,7 @@ class OtpService {
         userExists: true,
         isPlayer: true,
         user: {
+          ...profile,
           id: profile.id,
           role: profile.role,
           name: profile.name,
