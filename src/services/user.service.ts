@@ -280,6 +280,8 @@ export class UserService {
       date_of_birth?: string;
       dupr_id?: string;
       role?: string;
+      gender?: string;
+      tshirt_size?: string;
       dupr_validated?: boolean;
       dupr_validation_error?: string | null;
       dupr_player_data?: any;
@@ -305,6 +307,9 @@ export class UserService {
         updateData.date_of_birth = userData.date_of_birth;
       if (userData.dupr_id !== undefined) updateData.dupr_id = userData.dupr_id;
       if (userData.role !== undefined) updateData.role = userData.role;
+      if (userData.gender !== undefined) updateData.gender = userData.gender;
+      if (userData.tshirt_size !== undefined)
+        updateData.tshirt_size = userData.tshirt_size;
       if (userData.dupr_validated !== undefined)
         updateData.dupr_validated = userData.dupr_validated;
       if (userData.dupr_validation_error !== undefined)
@@ -472,6 +477,7 @@ export class UserService {
               organization_description:
                 userData.organizationDescription || null,
               experience: userData.experience || null,
+              dupr_id: userData.duprId || null,
             },
             email_confirm: true, // Auto-confirm for admin-created users
           });
