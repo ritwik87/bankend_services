@@ -943,7 +943,7 @@ class OtpService {
       const { data: profile, error } = await supabase
         .from('profiles')
         .select(
-          'id, role, name, email, phone, age, dupr_id, profile_picture_url, profile_picture_crop_metadata, date_of_birth, role, gender'
+          'id, role, name, email, phone, age, dupr_id, profile_picture_url, profile_picture_crop_metadata, date_of_birth, role, gender, tshirt_size'
         )
         .or(phoneOrCondition(phone))
         .single();
