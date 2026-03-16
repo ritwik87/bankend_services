@@ -336,24 +336,37 @@ export class UserService {
         };
       }
 
-      // If email is updated, also update in auth
+      // If email or phone is updated, sync to auth.users
+      const authUpdate: Record<string, any> = {};
+
       if (userData.email) {
+        authUpdate.email = userData.email;
+        authUpdate.email_confirm = true;
+        authUpdate.user_metadata = {
+          ...(userData.role ? { role: userData.role } : {}),
+          email: userData.email,
+        };
+      }
+
+      // Phone is used as the Supabase password — must stay in sync
+      if (userData.phone) {
+        authUpdate.password = userData.phone;
+        authUpdate.phone = userData.phone;
+      }
+
+      if (Object.keys(authUpdate).length > 0) {
         const { error: authError } = await supabase.auth.admin.updateUserById(
           userId,
-          {
-            email: userData.email,
-            email_confirm: true,
-            user_metadata: {
-              role: userData.role,
-              email: userData.email,
-            },
-          }
+          authUpdate
         );
 
         if (authError) {
-          logger.error('Error updating user email in auth:', authError);
-          // Don't fail the whole operation, just log the error
-          logger.warn('Profile updated but auth email update failed');
+          logger.error('Error updating user in auth:', authError);
+          logger.warn('Profile updated but auth update failed');
+        } else {
+          logger.info(
+            `Auth updated for user ${userId}: fields=${Object.keys(authUpdate).join(',')}`
+          );
         }
       }
 
