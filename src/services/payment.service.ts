@@ -680,8 +680,12 @@ export class PaymentService {
         };
       }
 
-      const paymentIds =
-        registrations?.map((reg) => reg.payment_id).filter(Boolean) || [];
+      // Deduplicate — one payment can cover multiple category registrations
+      const paymentIds = [
+        ...new Set(
+          (registrations?.map((reg) => reg.payment_id).filter(Boolean) || []) as string[]
+        ),
+      ];
 
       if (paymentIds.length === 0) {
         return {
@@ -697,7 +701,7 @@ export class PaymentService {
         `${credentials.key}:${credentials.secret}`
       ).toString('base64');
 
-      const paymentPromises = paymentIds.map(async (paymentId) => {
+      const fetchOne = async (paymentId: string) => {
         try {
           const response = await fetch(
             `https://api.razorpay.com/v1/payments/${paymentId}`,
@@ -709,23 +713,25 @@ export class PaymentService {
               },
             }
           );
-
-          if (response.ok) {
-            return await response.json();
-          } else {
-            logger.warn(
-              `Failed to fetch payment ${paymentId}:`,
-              response.status
-            );
-            return null;
-          }
+          if (response.ok) return await response.json();
+          logger.warn(`Failed to fetch payment ${paymentId}: HTTP ${response.status}`);
+          return null;
         } catch (error) {
           logger.warn(`Error fetching payment ${paymentId}:`, error);
           return null;
         }
-      });
+      };
 
-      const payments = (await Promise.all(paymentPromises)).filter(Boolean);
+      // Batch requests 10 at a time to avoid Razorpay rate limits
+      const batchSize = 10;
+      const allResults: any[] = [];
+      for (let i = 0; i < paymentIds.length; i += batchSize) {
+        const batch = paymentIds.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch.map(fetchOne));
+        allResults.push(...batchResults);
+      }
+
+      const payments = allResults.filter(Boolean);
 
       return {
         success: true,
@@ -1241,6 +1247,190 @@ export class PaymentService {
   /**
    * Get aggregated transaction data for admin dashboard
    */
+  /**
+   * Fetch all Razorpay orders/payments where notes contain the given tournament_id or league_id.
+   * Paginates through the full Razorpay orders list (max 100 per page) and filters client-side.
+   */
+  async fetchTransactionsByNotes(context: {
+    type: 'tournament' | 'league';
+    id: string;
+  }): Promise<any> {
+    try {
+      const credentials = await this.fetchCredentials(context);
+      if (!credentials) {
+        return { success: false, error: 'Unable to retrieve Razorpay credentials' };
+      }
+
+      const auth = Buffer.from(`${credentials.key}:${credentials.secret}`).toString('base64');
+
+      // Only fetch last 90 days
+      const from = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
+
+      const transactions: any[] = [];
+      let skip = 0;
+      const pageSize = 100;
+
+      while (true) {
+        const params = new URLSearchParams({
+          count: pageSize.toString(),
+          skip: skip.toString(),
+          from: from.toString(),
+        });
+
+        const response = await fetch(`https://api.razorpay.com/v1/payments?${params}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const err: any = await response.json();
+          logger.error('Failed to fetch Razorpay payments page:', err);
+          break;
+        }
+
+        const data: any = await response.json();
+        const items: any[] = data.items || [];
+
+        const matched = items.filter((p: any) => {
+          const notes = p.notes || {};
+          return (
+            p.status === 'captured' &&
+            (notes.tournament_id === context.id || notes.league_id === context.id)
+          );
+        });
+
+        transactions.push(...matched);
+        logger.info(`Scanned ${skip + items.length} payments, matched ${transactions.length} so far`);
+
+        if (items.length < pageSize) break;
+        skip += pageSize;
+      }
+
+      const result = transactions.map((p: any) => ({
+        payment_id: p.id,
+        order_id: p.order_id,
+        amount: (p.amount || 0) / 100,
+        status: p.status,
+        currency: p.currency || 'INR',
+        created_at: p.created_at ? new Date(p.created_at * 1000).toISOString() : null,
+        notes: p.notes || {},
+      }));
+
+      return { success: true, count: result.length, transactions: result };
+    } catch (error) {
+      logger.error('Error fetching transactions by notes:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Find players who paid on Razorpay but have no entry in tournament_registrations.
+   * Returns player info + categories they attempted to register for.
+   */
+  async fetchMissingRegistrations(tournamentId: string): Promise<any> {
+    try {
+      // 1. Get all captured Razorpay payments for this tournament
+      const razorpayResult = await this.fetchTransactionsByNotes({ type: 'tournament', id: tournamentId });
+      if (!razorpayResult.success) return razorpayResult;
+
+      const razorpayTransactions: any[] = razorpayResult.transactions;
+      if (razorpayTransactions.length === 0) {
+        return { success: true, count: 0, missing_registrations: [] };
+      }
+
+      // 2. Get all distinct payment_ids stored in our DB for this tournament
+      const { data: dbRows, error: dbError } = await supabase
+        .from('tournament_registrations')
+        .select('payment_id')
+        .eq('tournament_id', tournamentId)
+        .not('payment_id', 'is', null)
+        .neq('payment_id', '');
+
+      if (dbError) {
+        logger.error('Error fetching DB payment ids:', dbError);
+        return { success: false, error: dbError.message };
+      }
+
+      const dbPaymentIds = new Set((dbRows || []).map((r: any) => r.payment_id));
+
+      // 3. Find Razorpay transactions whose payment_id is NOT in DB
+      const missingTransactions = razorpayTransactions.filter(
+        (t: any) => !dbPaymentIds.has(t.payment_id)
+      );
+
+      if (missingTransactions.length === 0) {
+        return { success: true, count: 0, missing_registrations: [] };
+      }
+
+      // 4. Gather unique player_ids and category_ids from notes
+      const playerIds = [...new Set(missingTransactions.map((t: any) => t.notes?.player_id).filter(Boolean))];
+      const allCategoryIds = [
+        ...new Set(
+          missingTransactions
+            .flatMap((t: any) => (t.notes?.category_ids || '').split(',').map((s: string) => s.trim()))
+            .filter(Boolean)
+        ),
+      ];
+
+      // 5. Fetch player profiles and categories in parallel
+      const [profilesResult, categoriesResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, name, email, phone, dupr_id')
+          .in('id', playerIds),
+        supabase
+          .from('tournament_categories')
+          .select('id, name, fee')
+          .in('id', allCategoryIds),
+      ]);
+
+      const profileMap = new Map((profilesResult.data || []).map((p: any) => [p.id, p]));
+      const categoryMap = new Map((categoriesResult.data || []).map((c: any) => [c.id, c]));
+
+      // 6. Build response
+      const missing_registrations = missingTransactions.map((t: any) => {
+        const notes = t.notes || {};
+        const player = profileMap.get(notes.player_id) || null;
+        const categoryIds = (notes.category_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        const categories = categoryIds.map((id: string) => categoryMap.get(id) || { id, name: 'Unknown' });
+
+        return {
+          payment_id: t.payment_id,
+          order_id: t.order_id,
+          amount_paid: t.amount,
+          currency: t.currency,
+          payment_date: t.created_at,
+          player: player
+            ? {
+                id: player.id,
+                name: player.name,
+                email: player.email,
+                phone: player.phone,
+                dupr_id: player.dupr_id,
+              }
+            : { id: notes.player_id, name: null, email: null, phone: null },
+          categories_attempted: categories,
+          registration_count: parseInt(notes.registration_count || '0', 10),
+          is_icon_player: notes.is_icon_player === 'true',
+        };
+      });
+
+      return { success: true, count: missing_registrations.length, missing_registrations };
+    } catch (error) {
+      logger.error('Error fetching missing registrations:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
   async getAdminTransactions(): Promise<any> {
     try {
       // Fetch all tournaments and leagues with default credentials only
