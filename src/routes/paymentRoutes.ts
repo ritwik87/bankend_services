@@ -569,6 +569,41 @@ router.get(
 
 /**
  * @swagger
+ * /api/payment/razorpay-transactions:
+ *   get:
+ *     summary: Fetch all Razorpay transactions where notes contain tournament_id or league_id
+ *     tags: [Payment]
+ *     parameters:
+ *       - in: query
+ *         name: tournament_id
+ *         schema:
+ *           type: string
+ *         description: Tournament ID to filter orders by notes
+ *       - in: query
+ *         name: league_id
+ *         schema:
+ *           type: string
+ *         description: League ID to filter orders by notes
+ *     responses:
+ *       200:
+ *         description: Transactions fetched successfully from Razorpay by notes filter
+ */
+router.get(
+  '/razorpay-transactions',
+  rateLimiter,
+  requireAdmin,
+  paymentController.getRazorpayTransactionsByNotes
+);
+
+router.get(
+  '/missing-registrations',
+  rateLimiter,
+  requireAdmin,
+  paymentController.getMissingRegistrations
+);
+
+/**
+ * @swagger
  * /api/payment/verify-payment-id:
  *   post:
  *     summary: Verify payment ID exists and get payment details
