@@ -569,16 +569,20 @@ export class PaymentController {
 
   async getMissingRegistrations(req: Request, res: Response): Promise<void> {
     try {
-      const { tournament_id } = req.query as { tournament_id?: string };
+      const { tournament_id, league_id } = req.query as { tournament_id?: string; league_id?: string };
 
-      if (!tournament_id) {
-        res.status(400).json({ success: false, error: 'tournament_id query parameter is required' });
+      if (!tournament_id && !league_id) {
+        res.status(400).json({ success: false, error: 'Either tournament_id or league_id query parameter is required' });
         return;
       }
 
-      logger.info('Fetching missing registrations for tournament', { tournament_id });
+      const context = tournament_id
+        ? { type: 'tournament' as const, id: tournament_id }
+        : { type: 'league' as const, id: league_id! };
 
-      const result = await paymentService.fetchMissingRegistrations(tournament_id);
+      logger.info('Fetching missing registrations', context);
+
+      const result = await paymentService.fetchMissingRegistrations(context);
 
       if (result.success) {
         res.status(200).json(result);
