@@ -1333,10 +1333,10 @@ export class PaymentService {
    * Find players who paid on Razorpay but have no entry in tournament_registrations.
    * Returns player info + categories they attempted to register for.
    */
-  async fetchMissingRegistrations(tournamentId: string): Promise<any> {
+  async fetchMissingRegistrations(context: { type: 'tournament' | 'league'; id: string }): Promise<any> {
     try {
-      // 1. Get all captured Razorpay payments for this tournament
-      const razorpayResult = await this.fetchTransactionsByNotes({ type: 'tournament', id: tournamentId });
+      // 1. Get all captured Razorpay payments for this entity
+      const razorpayResult = await this.fetchTransactionsByNotes(context);
       if (!razorpayResult.success) return razorpayResult;
 
       const razorpayTransactions: any[] = razorpayResult.transactions;
@@ -1344,11 +1344,14 @@ export class PaymentService {
         return { success: true, count: 0, missing_registrations: [] };
       }
 
-      // 2. Get all distinct payment_ids stored in our DB for this tournament
+      // 2. Get all distinct payment_ids stored in our DB — table depends on entity type
+      const table = context.type === 'league' ? 'league_registrations' : 'tournament_registrations';
+      const idColumn = context.type === 'league' ? 'league_id' : 'tournament_id';
+
       const { data: dbRows, error: dbError } = await supabase
-        .from('tournament_registrations')
+        .from(table)
         .select('payment_id')
-        .eq('tournament_id', tournamentId)
+        .eq(idColumn, context.id)
         .not('payment_id', 'is', null)
         .neq('payment_id', '');
 
@@ -1368,37 +1371,98 @@ export class PaymentService {
         return { success: true, count: 0, missing_registrations: [] };
       }
 
-      // 4. Gather unique player_ids and category_ids from notes
+      // 4. Gather unique player_ids from notes
       const playerIds = [...new Set(missingTransactions.map((t: any) => t.notes?.player_id).filter(Boolean))];
-      const allCategoryIds = [
-        ...new Set(
-          missingTransactions
-            .flatMap((t: any) => (t.notes?.category_ids || '').split(',').map((s: string) => s.trim()))
-            .filter(Boolean)
-        ),
-      ];
 
-      // 5. Fetch player profiles and categories in parallel
-      const [profilesResult, categoriesResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, name, email, phone, dupr_id')
-          .in('id', playerIds),
-        supabase
-          .from('tournament_categories')
-          .select('id, name, fee')
-          .in('id', allCategoryIds),
+      // Supports both legacy format (partnerId string) and new format ({ id, phone })
+      const extractPartnerId = (v: any): string | null => {
+        if (!v) return null;
+        if (typeof v === 'string') return v;
+        if (typeof v === 'object' && v.id) return v.id;
+        return null;
+      };
+
+      // Tournament-only: gather category IDs and partner IDs
+      const allCategoryIds: string[] = [];
+      const allPartnerIds: string[] = [];
+
+      if (context.type === 'tournament') {
+        allCategoryIds.push(...[
+          ...new Set(
+            missingTransactions
+              .flatMap((t: any) => (t.notes?.category_ids || '').split(',').map((s: string) => s.trim()))
+              .filter(Boolean)
+          ),
+        ]);
+
+        allPartnerIds.push(...[
+          ...new Set(
+            missingTransactions.flatMap((t: any) => {
+              try {
+                const cp = JSON.parse(t.notes?.category_partners || '{}');
+                return Object.values(cp).map(extractPartnerId).filter((v): v is string => !!v);
+              } catch {
+                return [];
+              }
+            })
+          ),
+        ]);
+      }
+
+      // 5. Fetch profiles and (for tournaments) partner profiles + categories in parallel
+      const [profilesResult, partnerProfilesResult, categoriesResult] = await Promise.all([
+        supabase.from('profiles').select('id, name, email, phone, dupr_id').in('id', playerIds),
+        allPartnerIds.length > 0
+          ? supabase.from('profiles').select('id, name, email, phone, dupr_id').in('id', allPartnerIds)
+          : Promise.resolve({ data: [] as any[], error: null }),
+        allCategoryIds.length > 0
+          ? supabase.from('tournament_categories').select('id, name, fee').in('id', allCategoryIds)
+          : Promise.resolve({ data: [] as any[], error: null }),
       ]);
 
       const profileMap = new Map((profilesResult.data || []).map((p: any) => [p.id, p]));
+      const partnerProfileMap = new Map((partnerProfilesResult.data || []).map((p: any) => [p.id, p]));
       const categoryMap = new Map((categoriesResult.data || []).map((c: any) => [c.id, c]));
 
       // 6. Build response
       const missing_registrations = missingTransactions.map((t: any) => {
         const notes = t.notes || {};
         const player = profileMap.get(notes.player_id) || null;
-        const categoryIds = (notes.category_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-        const categories = categoryIds.map((id: string) => categoryMap.get(id) || { id, name: 'Unknown' });
+
+        // Parse player_fields and partner_fields
+        let playerFields: string[] = [];
+        let partnerFields: Record<string, string[]> = {};
+        try { playerFields = JSON.parse(notes.player_fields || '[]'); } catch { playerFields = []; }
+        try { partnerFields = JSON.parse(notes.partner_fields || '{}'); } catch { partnerFields = {}; }
+
+        // Build categories (tournament only)
+        let categories_attempted: any[] = [];
+        if (context.type === 'tournament') {
+          const categoryIds = (notes.category_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+          let categoryPartnersMap: Record<string, any> = {};
+          try { categoryPartnersMap = JSON.parse(notes.category_partners || '{}'); } catch { categoryPartnersMap = {}; }
+
+          categories_attempted = categoryIds.map((id: string) => {
+            const cat = categoryMap.get(id) || { id, name: 'Unknown', fee: null };
+            const partnerEntry = categoryPartnersMap[id] || null;
+            const partnerId = extractPartnerId(partnerEntry);
+            const partnerPhoneFromNotes = partnerEntry && typeof partnerEntry === 'object' ? partnerEntry.phone || null : null;
+            const partnerProfile = partnerId ? (partnerProfileMap.get(partnerId) || null) : null;
+            return {
+              ...cat,
+              partner: partnerId
+                ? {
+                    id: partnerId,
+                    name: partnerProfile?.name ?? null,
+                    email: partnerProfile?.email ?? null,
+                    phone: partnerProfile?.phone ?? partnerPhoneFromNotes,
+                    dupr_id: partnerProfile?.dupr_id ?? null,
+                  }
+                : null,
+              partner_fields: partnerFields[id] || [],
+            };
+          });
+        }
 
         return {
           payment_id: t.payment_id,
@@ -1406,18 +1470,13 @@ export class PaymentService {
           amount_paid: t.amount,
           currency: t.currency,
           payment_date: t.created_at,
+          entity_type: context.type,
           player: player
-            ? {
-                id: player.id,
-                name: player.name,
-                email: player.email,
-                phone: player.phone,
-                dupr_id: player.dupr_id,
-              }
-            : { id: notes.player_id, name: null, email: null, phone: null },
-          categories_attempted: categories,
+            ? { id: player.id, name: player.name, email: player.email, phone: player.phone, dupr_id: player.dupr_id }
+            : { id: notes.player_id, name: notes.player_name || null, email: null, phone: notes.player_phone || null, dupr_id: null },
+          player_fields: playerFields,
+          categories_attempted,
           registration_count: parseInt(notes.registration_count || '0', 10),
-          is_icon_player: notes.is_icon_player === 'true',
         };
       });
 
