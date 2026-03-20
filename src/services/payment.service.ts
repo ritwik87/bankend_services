@@ -683,7 +683,8 @@ export class PaymentService {
       // Deduplicate — one payment can cover multiple category registrations
       const paymentIds = [
         ...new Set(
-          (registrations?.map((reg) => reg.payment_id).filter(Boolean) || []) as string[]
+          (registrations?.map((reg) => reg.payment_id).filter(Boolean) ||
+            []) as string[]
         ),
       ];
 
@@ -714,7 +715,9 @@ export class PaymentService {
             }
           );
           if (response.ok) return await response.json();
-          logger.warn(`Failed to fetch payment ${paymentId}: HTTP ${response.status}`);
+          logger.warn(
+            `Failed to fetch payment ${paymentId}: HTTP ${response.status}`
+          );
           return null;
         } catch (error) {
           logger.warn(`Error fetching payment ${paymentId}:`, error);
@@ -1258,10 +1261,15 @@ export class PaymentService {
     try {
       const credentials = await this.fetchCredentials(context);
       if (!credentials) {
-        return { success: false, error: 'Unable to retrieve Razorpay credentials' };
+        return {
+          success: false,
+          error: 'Unable to retrieve Razorpay credentials',
+        };
       }
 
-      const auth = Buffer.from(`${credentials.key}:${credentials.secret}`).toString('base64');
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
 
       // Only fetch last 90 days
       const from = Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000);
@@ -1277,13 +1285,16 @@ export class PaymentService {
           from: from.toString(),
         });
 
-        const response = await fetch(`https://api.razorpay.com/v1/payments?${params}`, {
-          method: 'GET',
-          headers: {
-            Authorization: `Basic ${auth}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        const response = await fetch(
+          `https://api.razorpay.com/v1/payments?${params}`,
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Basic ${auth}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
 
         if (!response.ok) {
           const err: any = await response.json();
@@ -1298,12 +1309,17 @@ export class PaymentService {
           const notes = p.notes || {};
           return (
             p.status === 'captured' &&
-            (notes.tournament_id === context.id || notes.league_id === context.id)
+            (notes.tournament_id === context.id ||
+              notes.league_id === context.id)
           );
         });
 
         transactions.push(...matched);
-        logger.info(`Scanned ${skip + items.length} payments, matched ${transactions.length} so far`);
+        logger.info(
+          `Scanned ${skip + items.length} payments, matched ${
+            transactions.length
+          } so far`
+        );
 
         if (items.length < pageSize) break;
         skip += pageSize;
@@ -1315,7 +1331,9 @@ export class PaymentService {
         amount: (p.amount || 0) / 100,
         status: p.status,
         currency: p.currency || 'INR',
-        created_at: p.created_at ? new Date(p.created_at * 1000).toISOString() : null,
+        created_at: p.created_at
+          ? new Date(p.created_at * 1000).toISOString()
+          : null,
         notes: p.notes || {},
       }));
 
@@ -1324,7 +1342,8 @@ export class PaymentService {
       logger.error('Error fetching transactions by notes:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       };
     }
   }
@@ -1333,10 +1352,13 @@ export class PaymentService {
    * Find players who paid on Razorpay but have no entry in tournament_registrations.
    * Returns player info + categories they attempted to register for.
    */
-  async fetchMissingRegistrations(tournamentId: string): Promise<any> {
+  async fetchMissingRegistrations(context: {
+    type: 'tournament' | 'league';
+    id: string;
+  }): Promise<any> {
     try {
-      // 1. Get all captured Razorpay payments for this tournament
-      const razorpayResult = await this.fetchTransactionsByNotes({ type: 'tournament', id: tournamentId });
+      // 1. Get all captured Razorpay payments for this entity
+      const razorpayResult = await this.fetchTransactionsByNotes(context);
       if (!razorpayResult.success) return razorpayResult;
 
       const razorpayTransactions: any[] = razorpayResult.transactions;
@@ -1344,11 +1366,18 @@ export class PaymentService {
         return { success: true, count: 0, missing_registrations: [] };
       }
 
-      // 2. Get all distinct payment_ids stored in our DB for this tournament
+      // 2. Get all distinct payment_ids stored in our DB — table depends on entity type
+      const table =
+        context.type === 'league'
+          ? 'league_registrations'
+          : 'tournament_registrations';
+      const idColumn =
+        context.type === 'league' ? 'league_id' : 'tournament_id';
+
       const { data: dbRows, error: dbError } = await supabase
-        .from('tournament_registrations')
+        .from(table)
         .select('payment_id')
-        .eq('tournament_id', tournamentId)
+        .eq(idColumn, context.id)
         .not('payment_id', 'is', null)
         .neq('payment_id', '');
 
@@ -1357,7 +1386,9 @@ export class PaymentService {
         return { success: false, error: dbError.message };
       }
 
-      const dbPaymentIds = new Set((dbRows || []).map((r: any) => r.payment_id));
+      const dbPaymentIds = new Set(
+        (dbRows || []).map((r: any) => r.payment_id)
+      );
 
       // 3. Find Razorpay transactions whose payment_id is NOT in DB
       const missingTransactions = razorpayTransactions.filter(
@@ -1368,37 +1399,105 @@ export class PaymentService {
         return { success: true, count: 0, missing_registrations: [] };
       }
 
-      // 4. Gather unique player_ids and category_ids from notes
-      const playerIds = [...new Set(missingTransactions.map((t: any) => t.notes?.player_id).filter(Boolean))];
-      const allCategoryIds = [
-        ...new Set(
-          missingTransactions
-            .flatMap((t: any) => (t.notes?.category_ids || '').split(',').map((s: string) => s.trim()))
-            .filter(Boolean)
-        ),
-      ];
+      // Supports both legacy format (partnerId string) and new format ({ id, phone })
+      const extractPartnerId = (v: any): string | null => {
+        if (!v) return null;
+        if (typeof v === 'string') return v;
+        if (typeof v === 'object' && v.id) return v.id;
+        return null;
+      };
 
-      // 5. Fetch player profiles and categories in parallel
-      const [profilesResult, categoriesResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, name, email, phone, dupr_id')
-          .in('id', playerIds),
-        supabase
-          .from('tournament_categories')
-          .select('id, name, fee')
-          .in('id', allCategoryIds),
-      ]);
+      // 4. Gather category IDs for tournament (need names/fees from DB)
+      const allCategoryIds: string[] = [];
+      if (context.type === 'tournament') {
+        allCategoryIds.push(
+          ...[
+            ...new Set(
+              missingTransactions
+                .flatMap((t: any) =>
+                  (t.notes?.category_ids || '')
+                    .split(',')
+                    .map((s: string) => s.trim())
+                )
+                .filter(Boolean)
+            ),
+          ]
+        );
+      }
 
-      const profileMap = new Map((profilesResult.data || []).map((p: any) => [p.id, p]));
-      const categoryMap = new Map((categoriesResult.data || []).map((c: any) => [c.id, c]));
+      // 5. Fetch only tournament categories (no profile lookups — all player/partner
+      //    data comes directly from notes)
+      const categoriesResult = allCategoryIds.length > 0
+        ? await supabase
+            .from('tournament_categories')
+            .select('id, name, fee')
+            .in('id', allCategoryIds)
+        : { data: [] as any[], error: null };
 
-      // 6. Build response
+      const categoryMap = new Map(
+        (categoriesResult.data || []).map((c: any) => [c.id, c])
+      );
+
+      // 6. Build response entirely from notes — no profile DB calls
       const missing_registrations = missingTransactions.map((t: any) => {
         const notes = t.notes || {};
-        const player = profileMap.get(notes.player_id) || null;
-        const categoryIds = (notes.category_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-        const categories = categoryIds.map((id: string) => categoryMap.get(id) || { id, name: 'Unknown' });
+
+        // Parse player_fields
+        let playerFields: string[] = [];
+        try {
+          playerFields = JSON.parse(notes.player_fields || '[]');
+        } catch {
+          playerFields = [];
+        }
+
+        // Build categories (tournament only)
+        let categories_attempted: any[] = [];
+        if (context.type === 'tournament') {
+          const categoryIds = (notes.category_ids || '')
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+
+          // Helper: resolve index-keyed (new) or UUID-keyed (old) notes objects
+          // back to a categoryId → value map.
+          const resolveByCategory = <T>(
+            raw: Record<string, T>
+          ): Record<string, T> => {
+            const firstKey = Object.keys(raw)[0];
+            if (firstKey === undefined) return raw;
+            if (!firstKey.includes('-')) {
+              // Index-keyed (new compact format)
+              const result: Record<string, T> = {};
+              Object.entries(raw).forEach(([idx, value]) => {
+                const catId = categoryIds[parseInt(idx, 10)];
+                if (catId) result[catId] = value;
+              });
+              return result;
+            }
+            return raw; // UUID-keyed (old format)
+          };
+
+          let partnerFields: Record<string, string[]> = {};
+          try {
+            partnerFields = resolveByCategory(JSON.parse(notes.partner_fields || '{}'));
+          } catch { /* empty */ }
+
+          let categoryPartnersMap: Record<string, any> = {};
+          try {
+            categoryPartnersMap = resolveByCategory(JSON.parse(notes.category_partners || '{}'));
+          } catch { /* empty */ }
+
+          categories_attempted = categoryIds.map((id: string) => {
+            const cat = categoryMap.get(id) || { id, name: 'Unknown', fee: null };
+            const partnerEntry = categoryPartnersMap[id] ?? null;
+            const partnerId = extractPartnerId(partnerEntry);
+            return {
+              ...cat,
+              partner: partnerId ? { id: partnerId } : null,
+              partner_fields: partnerFields[id] || [],
+            };
+          });
+        }
 
         return {
           payment_id: t.payment_id,
@@ -1406,27 +1505,31 @@ export class PaymentService {
           amount_paid: t.amount,
           currency: t.currency,
           payment_date: t.created_at,
-          player: player
-            ? {
-                id: player.id,
-                name: player.name,
-                email: player.email,
-                phone: player.phone,
-                dupr_id: player.dupr_id,
-              }
-            : { id: notes.player_id, name: null, email: null, phone: null },
-          categories_attempted: categories,
+          entity_type: context.type,
+          player: {
+            id: notes.player_id || null,
+            name: notes.player_name || null,
+            email: null,
+            phone: notes.player_phone || null,
+            dupr_id: null,
+          },
+          player_fields: playerFields,
+          categories_attempted,
           registration_count: parseInt(notes.registration_count || '0', 10),
-          is_icon_player: notes.is_icon_player === 'true',
         };
       });
 
-      return { success: true, count: missing_registrations.length, missing_registrations };
+      return {
+        success: true,
+        count: missing_registrations.length,
+        missing_registrations,
+      };
     } catch (error) {
       logger.error('Error fetching missing registrations:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error:
+          error instanceof Error ? error.message : 'Unknown error occurred',
       };
     }
   }
