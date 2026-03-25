@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import dummyPlayersData from '../../complete_dummy_players.json';
 import {
   CompleteRegistrationRequest,
@@ -11,10 +10,7 @@ import {
 } from '../types/otp.types';
 import { phoneOrCondition } from '../utils/helper';
 import logger from '../utils/logger';
-
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+import { supabase } from '../utils/supabase';
 
 // Convert JSON array to object with phone as key for easy lookup - Contains 114 total users (6 original + 108 new players)
 const DUMMY_USERS = dummyPlayersData.reduce((acc, user) => {
@@ -44,7 +40,7 @@ class OtpService {
       // Check if this is a dummy user
       const dummyUser = getDummyUser(phone);
       let otp: string;
-      let shouldSendOtp = true;
+      let shouldSendOtp = false;
 
       if (dummyUser) {
         // Use static OTP for dummy users
