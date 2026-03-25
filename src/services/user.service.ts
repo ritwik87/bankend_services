@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import {
   UpdateEmailRequest,
   UpdateEmailResponse,
@@ -7,12 +6,7 @@ import {
 } from '../types/user.types';
 import { phoneOrCondition } from '../utils/helper';
 import logger from '../utils/logger';
-
-// Initialize Supabase client with service role key for admin operations
-const supabase = createClient(
-  process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+import { supabase } from '../utils/supabase';
 
 export class UserService {
   /**

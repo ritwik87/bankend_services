@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import {
   CreateOrderRequest,
@@ -16,12 +15,7 @@ import {
 } from '../types/payment.types';
 import logger from '../utils/logger';
 import { whatsappService } from './whatsapp.service';
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
-);
+import { supabase } from '../utils/supabase';
 
 export class PaymentService {
   /**
