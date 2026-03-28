@@ -40,7 +40,7 @@ class OtpService {
       // Check if this is a dummy user
       const dummyUser = getDummyUser(phone);
       let otp: string;
-      let shouldSendOtp = false;
+      let shouldSendOtp = true;
 
       if (dummyUser) {
         // Use static OTP for dummy users
