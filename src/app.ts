@@ -26,6 +26,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// Razorpay webhook needs raw body for HMAC signature verification.
+// Must be registered BEFORE express.json() so body-parser doesn't consume the stream first.
+app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));

@@ -330,6 +330,36 @@ export class PaymentController {
   }
 
   /**
+   * Razorpay webhook handler — no auth required, verified by HMAC signature.
+   * Always responds 200 to prevent Razorpay from retrying.
+   */
+  async handleWebhook(req: Request, res: Response): Promise<void> {
+    const signature = req.headers['x-razorpay-signature'] as string;
+    // x-razorpay-event-id is unique per delivery attempt (same on retries of the same event)
+    const eventId = req.headers['x-razorpay-event-id'] as string | undefined;
+
+    if (!signature) {
+      res.status(400).json({ success: false, error: 'Missing X-Razorpay-Signature header' });
+      return;
+    }
+
+    // req.body is a Buffer because express.raw() is applied to this path in app.ts
+    if (!Buffer.isBuffer(req.body)) {
+      res.status(400).json({ success: false, error: 'Expected raw body' });
+      return;
+    }
+
+    try {
+      const result = await paymentService.processWebhookPayment(req.body, signature, eventId);
+      // Always 200 — non-200 causes Razorpay to retry the webhook
+      res.status(200).json(result);
+    } catch (error) {
+      logger.error('Unhandled webhook error:', error);
+      res.status(200).json({ success: false, message: 'Webhook processing error' });
+    }
+  }
+
+  /**
    * Fetch payments for a specific tournament or league
    */
   async fetchPayments(req: Request, res: Response): Promise<void> {
