@@ -9,7 +9,10 @@ import { duprApiLimiter as rateLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
-// Apply authentication to all payment routes
+// Webhook — no auth (Razorpay calls this directly, verified by HMAC signature in handler)
+router.post('/webhook', paymentController.handleWebhook);
+
+// Apply authentication to all other payment routes
 router.use(requireAuth);
 
 /**

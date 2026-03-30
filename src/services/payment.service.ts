@@ -118,6 +118,12 @@ export class PaymentService {
         orderId: order.id,
       });
 
+      // Store full context so the webhook can create registrations + custom fields
+      // if the browser is closed before the frontend callback fires.
+      if (orderData.context) {
+        await this.storeOrderContext(order.id, orderData.context);
+      }
+
       return {
         success: true,
         order,
@@ -129,6 +135,221 @@ export class PaymentService {
         error:
           error instanceof Error ? error.message : 'Unknown error occurred',
       };
+    }
+  }
+
+  /**
+   * Persist the registration context for a Razorpay order so the webhook
+   * can use it even if the browser callback never fires.
+   */
+  private async storeOrderContext(orderId: string, context: any): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('pending_order_contexts')
+        .upsert({ order_id: orderId, context, status: 'pending' }, { onConflict: 'order_id' });
+      if (error) {
+        logger.error('Failed to store order context:', error);
+      }
+    } catch (err) {
+      logger.error('Exception storing order context:', err);
+    }
+  }
+
+  /**
+   * Process a Razorpay webhook event (payment.captured).
+   * Verifies signature, filters to this app's payments only (via notes.tournament_id
+   * or notes.league_id), then creates registrations + saves custom fields.
+   */
+  async processWebhookPayment(
+    rawBody: Buffer,
+    signature: string,
+    eventId?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      logger.error('RAZORPAY_WEBHOOK_SECRET is not set');
+      return { success: false, message: 'Webhook secret not configured' };
+    }
+
+    // 1. Verify Razorpay HMAC-SHA256 signature
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (expectedSignature !== signature) {
+      logger.warn('Razorpay webhook signature mismatch');
+      return { success: false, message: 'Invalid signature' };
+    }
+
+    const event = JSON.parse(rawBody.toString());
+    logger.info('Razorpay webhook received:', { event: event.event, eventId });
+
+    // 2. Only act on payment.captured
+    if (event.event !== 'payment.captured') {
+      return { success: true, message: `Event ${event.event} ignored` };
+    }
+
+    const payment = event.payload?.payment?.entity;
+    if (!payment) {
+      return { success: true, message: 'No payment entity in payload' };
+    }
+
+    const notes = payment.notes || {};
+
+    // 3. Platform check — BEFORE any Supabase call.
+    //    Every order created by this app stamps notes.platform = 'tournament_management'.
+    //    Payments from other apps sharing the same Razorpay account are silently ignored.
+    if (notes.platform !== 'tournament_management') {
+      logger.info('Webhook: ignoring payment from unknown platform', {
+        platform: notes.platform ?? '(none)',
+        paymentId: payment.id,
+      });
+      return { success: true, message: 'Not a tournament management payment' };
+    }
+
+    const paymentId: string = payment.id;
+    const orderId: string = payment.order_id;
+
+    // 4. Look up the stored context
+    const { data: pending, error: ctxError } = await supabase
+      .from('pending_order_contexts')
+      .select('*')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if (ctxError) {
+      logger.error('Error fetching pending context:', ctxError);
+      return { success: false, message: 'DB error fetching context' };
+    }
+
+    if (!pending) {
+      logger.warn('Webhook: no pending context for order', { orderId });
+      return { success: true, message: 'No context found for order' };
+    }
+
+    // 5. Idempotency checks (Razorpay official recommendation: use x-razorpay-event-id).
+    //    Also check payment_id on the context row — covers the case where a different
+    //    delivery attempt already processed this payment.
+    if (pending.status === 'processed') {
+      logger.info('Webhook: event already processed (status=processed)', { paymentId, eventId });
+      return { success: true, message: 'Already processed' };
+    }
+    if (eventId && pending.event_id && pending.event_id === eventId) {
+      logger.info('Webhook: duplicate delivery (same event_id)', { eventId });
+      return { success: true, message: 'Duplicate webhook delivery' };
+    }
+    if (pending.payment_id && pending.payment_id === paymentId) {
+      logger.info('Webhook: payment_id already recorded on context', { paymentId });
+      return { success: true, message: 'Payment already processed' };
+    }
+
+    const context = pending.context;
+    const entityType: 'tournament' | 'league' = context.type;
+
+    // 6. Create the registration(s)
+    try {
+      await this.createRegistrationAndSendNotifications(context, payment, paymentId);
+      logger.info('Webhook: registration(s) created', { paymentId, entityType });
+
+      // 7. Save custom fields (tournament + league)
+      await this.saveCustomFieldsFromContext(context, paymentId, entityType);
+
+      // 8. Mark as processed and persist payment_id + event_id for future idempotency checks
+      await supabase
+        .from('pending_order_contexts')
+        .update({
+          status: 'processed',
+          processed_at: new Date().toISOString(),
+          payment_id: paymentId,
+          ...(eventId ? { event_id: eventId } : {}),
+        })
+        .eq('order_id', orderId);
+
+      return { success: true, message: 'Registration created via webhook' };
+    } catch (err) {
+      logger.error('Webhook: failed to create registration:', err);
+      await supabase
+        .from('pending_order_contexts')
+        .update({ status: 'failed' })
+        .eq('order_id', orderId);
+      return { success: false, message: 'Registration creation failed' };
+    }
+  }
+
+  /**
+   * Save custom field values from the order context after registrations are created.
+   * Loops over all registration rows for this payment (one per category).
+   */
+  private async saveCustomFieldsFromContext(
+    context: any,
+    paymentId: string,
+    entityType: 'tournament' | 'league'
+  ): Promise<void> {
+    const customFieldValues = context.custom_field_values
+      ? JSON.parse(context.custom_field_values)
+      : {};
+    const partnerCustomFieldValues = context.partner_custom_field_values
+      ? JSON.parse(context.partner_custom_field_values)
+      : {};
+
+    const hasAnyFields =
+      Object.keys(customFieldValues).length > 0 ||
+      Object.keys(partnerCustomFieldValues).length > 0;
+    if (!hasAnyFields) return;
+
+    const registrationsTable =
+      entityType === 'tournament' ? 'tournament_registrations' : 'league_registrations';
+    const fieldValuesTable =
+      entityType === 'tournament'
+        ? 'tournament_registration_field_values'
+        : 'league_registration_field_values';
+
+    const { data: registrations, error } = await supabase
+      .from(registrationsTable)
+      .select('id, category_id')
+      .eq('payment_id', paymentId);
+
+    if (error || !registrations || registrations.length === 0) {
+      logger.warn('Webhook: no registrations found for custom field save', { paymentId, entityType });
+      return;
+    }
+
+    for (const reg of registrations) {
+      const fieldValues: any[] = [];
+
+      // Player fields are the same across all registrations
+      for (const [fieldId, value] of Object.entries(customFieldValues)) {
+        if (typeof value === 'string' && value.trim()) {
+          fieldValues.push({
+            registration_id: reg.id,
+            field_id: fieldId,
+            field_value: value,
+            ...(entityType === 'tournament' ? { field_owner: 'player' } : {}),
+          });
+        }
+      }
+
+      // Partner fields are tournament-only (per-category)
+      if (entityType === 'tournament') {
+        const categoryPartnerFields = partnerCustomFieldValues[reg.category_id] || {};
+        for (const [fieldId, value] of Object.entries(categoryPartnerFields)) {
+          if (typeof value === 'string' && (value as string).trim()) {
+            fieldValues.push({
+              registration_id: reg.id,
+              field_id: fieldId,
+              field_value: value as string,
+              field_owner: 'partner',
+            });
+          }
+        }
+      }
+
+      if (fieldValues.length > 0) {
+        await supabase.from(fieldValuesTable).delete().eq('registration_id', reg.id);
+        await supabase.from(fieldValuesTable).insert(fieldValues);
+        logger.info(`Webhook: saved ${fieldValues.length} custom fields for ${entityType} registration ${reg.id}`);
+      }
     }
   }
 
@@ -191,20 +412,9 @@ export class PaymentService {
           paymentId: razorpay_payment_id,
         });
 
-        // Create registration record and send WhatsApp notifications
-        try {
-          await this.createRegistrationAndSendNotifications(
-            context,
-            paymentDetails,
-            razorpay_payment_id
-          );
-        } catch (notificationError) {
-          // Log notification errors but don't fail the payment verification
-          logger.error(
-            'Error creating registration or sending WhatsApp notifications:',
-            notificationError
-          );
-        }
+        // Registration creation and custom fields are now handled by the
+        // Razorpay webhook (processWebhookPayment). verifyPayment only
+        // confirms the signature is valid for the frontend UX flow.
 
         return {
           success: true,
