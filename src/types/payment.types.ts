@@ -9,6 +9,7 @@ export interface CreateOrderRequest {
   receipt?: string;
   notes?: Record<string, string>;
   context: PaymentContext;
+  entity_id?: string; // tournament_id or league_id — sent explicitly by the frontend
 }
 
 export interface CreateOrderResponse {
