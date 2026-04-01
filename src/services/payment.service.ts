@@ -121,7 +121,7 @@ export class PaymentService {
       // Store full context so the webhook can create registrations + custom fields
       // if the browser is closed before the frontend callback fires.
       if (orderData.context) {
-        await this.storeOrderContext(order.id, orderData.context);
+        await this.storeOrderContext(order.id, orderData.context, orderData.entity_id);
       }
 
       return {
@@ -142,11 +142,19 @@ export class PaymentService {
    * Persist the registration context for a Razorpay order so the webhook
    * can use it even if the browser callback never fires.
    */
-  private async storeOrderContext(orderId: string, context: any): Promise<void> {
+  private async storeOrderContext(orderId: string, context: any, entityId?: string): Promise<void> {
     try {
       const { error } = await supabase
         .from('pending_order_contexts')
-        .upsert({ order_id: orderId, context, status: 'pending' }, { onConflict: 'order_id' });
+        .upsert(
+          {
+            order_id: orderId,
+            context,
+            status: 'pending',
+            ...(entityId ? { entity_id: entityId } : {}),
+          },
+          { onConflict: 'order_id' }
+        );
       if (error) {
         logger.error('Failed to store order context:', error);
       }
