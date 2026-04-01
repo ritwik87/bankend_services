@@ -77,7 +77,7 @@ export class PaymentService {
     orderData: CreateOrderRequest
   ): Promise<CreateOrderResponse> {
     try {
-      const { context, ...orderParams } = orderData;
+      const { context, entity_id, ...orderParams } = orderData;
 
       // Fetch credentials from database using context
       const credentials = await this.fetchCredentials(context);
@@ -121,7 +121,7 @@ export class PaymentService {
       // Store full context so the webhook can create registrations + custom fields
       // if the browser is closed before the frontend callback fires.
       if (orderData.context) {
-        await this.storeOrderContext(order.id, orderData.context, orderData.entity_id);
+        await this.storeOrderContext(order.id, orderData.context, entity_id);
       }
 
       return {
