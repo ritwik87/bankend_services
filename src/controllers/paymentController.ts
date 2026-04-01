@@ -28,7 +28,8 @@ const createOrderSchema = Joi.object({
     category_partners: Joi.string().optional(),
     custom_field_values: Joi.string().optional(),
     partner_custom_field_values: Joi.string().optional()
-  }).required()
+  }).required(),
+  entity_id: Joi.string().optional(),
 });
 
 const verifyPaymentSchema = Joi.object({
