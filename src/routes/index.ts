@@ -4,6 +4,7 @@ import paymentRoutes from './paymentRoutes';
 import otpRoutes from './otpRoutes';
 import userRoutes from './userRoutes';
 import auctionRoutes from './auctionRoutes';
+import aiChatRoutes from './aiChatRoutes';
 
 const router = Router();
 
@@ -21,5 +22,8 @@ router.use('/user', userRoutes);
 
 // Mount Auction routes
 router.use('/auction', auctionRoutes);
+
+// Mount AI Chat proxy routes
+router.use('/ai', aiChatRoutes);
 
 export default router;

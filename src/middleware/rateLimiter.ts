@@ -21,3 +21,5 @@ export const duprApiLimiter = createRateLimiter(
 );
 
 export const strictLimiter = createRateLimiter(60 * 1000, 10); // 10 requests per minute
+
+export const aiChatLimiter = createRateLimiter(15 * 60 * 1000, 30); // 30 requests per 15 minutes
