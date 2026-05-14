@@ -502,13 +502,24 @@ class OtpService {
             to: phone,
             type: 'template',
             template: {
-              name: 'order_details',
+              name: 'user_auth_otp',
               language: {
-                code: 'en_US',
+                code: 'en',
               },
               components: [
                 {
                   type: 'body',
+                  parameters: [
+                    {
+                      type: 'text',
+                      text: otp,
+                    },
+                  ],
+                },
+                {
+                  type: 'button',
+                  sub_type: 'url',
+                  index: '0',
                   parameters: [
                     {
                       type: 'text',
