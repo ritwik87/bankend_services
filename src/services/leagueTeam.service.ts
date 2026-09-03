@@ -1,6 +1,5 @@
 import logger from '../utils/logger';
 import { supabase } from '../utils/supabase';
-import duprPlayerService from './duprPlayer.service';
 import { phoneOrCondition } from '../utils/helper';
 
 /**
@@ -32,79 +31,7 @@ export interface TeamEligibilityResult {
   reason?: string;
 }
 
-/** Round half-up to 2 decimals. The number shown to the captain is the number enforced. */
-function roundTo2(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
 export class LeagueTeamService {
-  /**
-   * Live DUPR rating for one player.
-   *
-   * Always hits the DUPR API — never reads the cached profiles.dupr_player_data, because a
-   * stale rating could let a team slip past the average cap.
-   *
-   * Returns `undefined` to mean "could not determine" (API failure), distinct from `null`
-   * which means "player has no rating". Callers must fail closed on `undefined`.
-   */
-  private async fetchLiveRating(
-    duprId: string
-  ): Promise<{ rating: number | null; playerData: any } | undefined> {
-    try {
-      const result = await duprPlayerService.validatePlayer({ duprId });
-
-      if (!result.isValid || !result.player) {
-        // A definitive "not found" is not an outage — the player genuinely has no DUPR record.
-        return { rating: null, playerData: null };
-      }
-
-      const player: any = result.player;
-      const ratings = player.ratings || {};
-
-      // Same COALESCE(doubles, singles) the database rules mandate for match_participants_view.
-      // Ratings arrive as numbers or as strings like "NR" for unrated players.
-      const doubles = Number(ratings.doubles);
-      const singles = Number(ratings.singles);
-      const rating = Number.isFinite(doubles)
-        ? doubles
-        : Number.isFinite(singles)
-        ? singles
-        : null;
-
-      return { rating, playerData: player };
-    } catch (error) {
-      logger.error(`Live DUPR lookup failed for ${duprId}:`, error);
-      return undefined;
-    }
-  }
-
-  /**
-   * Refresh a profile's cached DUPR data.
-   *
-   * Only ever called with a successful lookup. A failed or empty response must never overwrite
-   * an existing value — profiles.dupr_player_data is read by tournament screens too, and
-   * blanking it would degrade them for a player who never touched this league.
-   */
-  private async persistPlayerData(
-    playerId: string,
-    playerData: any
-  ): Promise<void> {
-    if (!playerData) return;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        dupr_player_data: playerData,
-        dupr_validated: true,
-        dupr_validated_at: new Date().toISOString(),
-      })
-      .eq('id', playerId);
-
-    if (error) {
-      // Non-fatal: the rating we already hold in memory is what gates the registration.
-      logger.warn(`Could not cache DUPR data for player ${playerId}:`, error);
-    }
-  }
 
   /**
    * Load the team-mode configuration for a league, including its single category.
@@ -181,10 +108,7 @@ export class LeagueTeamService {
     }
 
     const league = config.league;
-    const cap =
-      league.max_avg_team_dupr === null || league.max_avg_team_dupr === undefined
-        ? null
-        : Number(league.max_avg_team_dupr);
+    const cap = null;
 
     // --- Team size -------------------------------------------------------------------
     const uniqueIds = [...new Set(memberIds)];
@@ -269,111 +193,19 @@ export class LeagueTeamService {
       };
     }
 
-    // No cap configured — size and duplicate rules still applied, ratings not required.
-    if (cap === null) {
-      return {
-        ok: true,
-        avgDupr: null,
-        cap: null,
-        categoryId: config.categoryId ?? null,
-        perPlayer: profiles.map((p: any) => ({
-          playerId: p.id,
-          name: p.name,
-          duprId: p.dupr_id,
-          rating: null,
-        })),
-      };
-    }
-
-    // --- Live ratings ----------------------------------------------------------------
-    const perPlayer: TeamMemberRating[] = [];
-    let apiFailed = false;
-
-    for (const profile of profiles as any[]) {
-      if (!profile.dupr_id) {
-        perPlayer.push({
-          playerId: profile.id,
-          name: profile.name,
-          duprId: null,
-          rating: null,
-          error: 'No DUPR ID on file',
-        });
-        continue;
-      }
-
-      const lookup = await this.fetchLiveRating(profile.dupr_id);
-
-      if (lookup === undefined) {
-        apiFailed = true;
-        perPlayer.push({
-          playerId: profile.id,
-          name: profile.name,
-          duprId: profile.dupr_id,
-          rating: null,
-          error: 'Could not reach DUPR',
-        });
-        continue;
-      }
-
-      if (lookup.playerData) {
-        await this.persistPlayerData(profile.id, lookup.playerData);
-      }
-
-      perPlayer.push({
-        playerId: profile.id,
-        name: profile.name,
-        duprId: profile.dupr_id,
-        rating: lookup.rating,
-        ...(lookup.rating === null ? { error: 'No DUPR rating' } : {}),
-      });
-    }
-
-    // Fail closed. Falling back to cached ratings here would defeat the cap, which is the
-    // entire point of the rule.
-    if (apiFailed) {
-      return {
-        ...empty,
-        cap,
-        perPlayer,
-        reason: 'Could not verify DUPR ratings right now. Please try again.',
-      };
-    }
-
-    // An unrated player blocks the team. Counting them as 0 — or excluding them from the
-    // mean — would let a team average its way under the cap with a ringer.
-    const unrated = perPlayer.filter((p) => p.rating === null);
-    if (unrated.length > 0) {
-      const names = unrated.map((p) => p.name || p.playerId).join(', ');
-      return {
-        ...empty,
-        cap,
-        perPlayer,
-        reason: `Every player needs a DUPR rating to register. Missing: ${names}`,
-      };
-    }
-
-    const sum = perPlayer.reduce((acc, p) => acc + (p.rating as number), 0);
-    const avgDupr = roundTo2(sum / perPlayer.length);
-
-    if (avgDupr > cap) {
-      return {
-        ok: false,
-        avgDupr,
-        cap,
-        categoryId: config.categoryId ?? null,
-        perPlayer,
-        reason: `Team average DUPR is ${avgDupr.toFixed(
-          2
-        )}, which exceeds the limit of ${cap.toFixed(2)}`,
-      };
-    }
-
+    // Ratings are not fetched and no average is enforced. Team eligibility is team size,
+    // no repeated player, nobody already registered, and no shared DUPR ID.
     return {
       ok: true,
-      avgDupr,
-      cap,
+      avgDupr: null,
+      cap: null,
       categoryId: config.categoryId ?? null,
-      perPlayer,
+      perPlayer: (profiles as any[]).map((p) => ({
+        playerId: p.id,
+        name: p.name,
+        duprId: p.dupr_id,
+        rating: null,
+      })),
     };
   }
 
