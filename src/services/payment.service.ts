@@ -16,6 +16,7 @@ import {
 import logger from '../utils/logger';
 import { whatsappService } from './whatsapp.service';
 import { supabase } from '../utils/supabase';
+import { leagueTeamService } from './leagueTeam.service';
 
 export class PaymentService {
   /**
@@ -286,6 +287,98 @@ export class PaymentService {
   }
 
   /**
+   * Save custom field answers for a league team registration.
+   *
+   * Two kinds of field, routed differently:
+   *   field_scope = 'team'       → written once, to the captain's registration row
+   *   field_scope = 'per_player' → written to that member's own registration row
+   *
+   * Without this split, the generic loop would write the captain's answers onto every member's
+   * row, since they all share a payment_id.
+   */
+  private async saveLeagueTeamCustomFields(
+    context: any,
+    paymentId: string
+  ): Promise<void> {
+    let teamFieldValues: Record<string, string> = {};
+    let memberFieldValues: Record<string, Record<string, string>> = {};
+
+    try {
+      teamFieldValues = context.custom_field_values
+        ? JSON.parse(context.custom_field_values)
+        : {};
+      memberFieldValues = context.member_custom_field_values
+        ? JSON.parse(context.member_custom_field_values)
+        : {};
+    } catch (err) {
+      logger.error('Webhook: unparseable custom field values for team', err);
+      return;
+    }
+
+    const hasAny =
+      Object.keys(teamFieldValues).length > 0 ||
+      Object.keys(memberFieldValues).length > 0;
+    if (!hasAny) return;
+
+    const { data: registrations, error } = await supabase
+      .from('league_registrations')
+      .select('id, player_id, is_captain')
+      .eq('payment_id', paymentId);
+
+    if (error || !registrations || registrations.length === 0) {
+      logger.warn('Webhook: no team registrations found for custom field save', {
+        paymentId,
+      });
+      return;
+    }
+
+    const rows: any[] = [];
+
+    const captain = registrations.find((r: any) => r.is_captain);
+    if (captain) {
+      for (const [fieldId, value] of Object.entries(teamFieldValues)) {
+        if (typeof value === 'string' && value.trim()) {
+          rows.push({
+            registration_id: captain.id,
+            field_id: fieldId,
+            field_value: value,
+          });
+        }
+      }
+    }
+
+    for (const registration of registrations as any[]) {
+      const answers = memberFieldValues[registration.player_id];
+      if (!answers) continue;
+
+      for (const [fieldId, value] of Object.entries(answers)) {
+        if (typeof value === 'string' && value.trim()) {
+          rows.push({
+            registration_id: registration.id,
+            field_id: fieldId,
+            field_value: value,
+          });
+        }
+      }
+    }
+
+    if (rows.length === 0) return;
+
+    const { error: insertError } = await supabase
+      .from('league_registration_field_values')
+      .insert(rows);
+
+    if (insertError) {
+      logger.error('Webhook: failed to save team custom fields:', insertError);
+      return;
+    }
+
+    logger.info(
+      `Webhook: saved ${rows.length} team custom field values for payment ${paymentId}`
+    );
+  }
+
+  /**
    * Save custom field values from the order context after registrations are created.
    * Loops over all registration rows for this payment (one per category).
    */
@@ -294,6 +387,13 @@ export class PaymentService {
     paymentId: string,
     entityType: 'tournament' | 'league'
   ): Promise<void> {
+    // League team registrations route answers by field scope instead of broadcasting them to
+    // every registration row sharing the payment.
+    if (entityType === 'league' && context.team_members) {
+      await this.saveLeagueTeamCustomFields(context, paymentId);
+      return;
+    }
+
     const customFieldValues = context.custom_field_values
       ? JSON.parse(context.custom_field_values)
       : {};
@@ -589,6 +689,82 @@ export class PaymentService {
   /**
    * Create registration record in the database
    */
+  /**
+   * Create a league team registration from a captured payment.
+   *
+   * Eligibility was already checked at order creation, before the captain was charged. It is
+   * re-checked here as a backstop, because a member's DUPR rating can change between the two.
+   *
+   * If that re-check fails we still create the team, held at status 'pending' for organizer
+   * review. Refusing outright would take the money and give nothing back.
+   */
+  private async createLeagueTeamRegistrationFromContext(
+    context: {
+      id: string;
+      player_id: string;
+      team_name?: string;
+      team_members?: string;
+    },
+    paymentId: string
+  ): Promise<string> {
+    let memberIds: string[];
+    try {
+      memberIds = JSON.parse(context.team_members || '[]');
+    } catch (err) {
+      logger.error('Webhook: unparseable team_members in context', err);
+      throw new Error('Invalid team member list in order context');
+    }
+
+    if (!Array.isArray(memberIds) || memberIds.length === 0) {
+      throw new Error('Order context has no team members');
+    }
+
+    const eligibility = await leagueTeamService.validateLeagueTeamEligibility(
+      context.id,
+      memberIds
+    );
+
+    let status: 'confirmed' | 'pending' = 'confirmed';
+    if (!eligibility.ok) {
+      status = 'pending';
+      logger.warn(
+        `Webhook: team failed re-validation after payment ${paymentId} — creating as pending for organizer review. Reason: ${eligibility.reason}`
+      );
+    }
+
+    // Fall back to the league's category even when eligibility failed, so standings still
+    // resolve win_points if an organizer later approves the team.
+    let categoryId = eligibility.categoryId;
+    if (!categoryId) {
+      const config = await leagueTeamService.getTeamLeagueConfig(context.id);
+      categoryId = config.categoryId ?? null;
+    }
+
+    const created = await leagueTeamService.createLeagueTeamRegistration({
+      leagueId: context.id,
+      teamName: context.team_name || `Team ${context.player_id.slice(0, 8)}`,
+      memberIds,
+      captainId: context.player_id,
+      categoryId,
+      paymentId,
+      avgDupr: eligibility.avgDupr,
+      status,
+    });
+
+    if (!created.success || !created.captainRegistrationId) {
+      logger.error(
+        `Webhook: failed to create team registration for payment ${paymentId}: ${created.error}`
+      );
+      throw new Error(created.error || 'Could not create the team registration');
+    }
+
+    logger.info(
+      `League team registration created: team=${created.teamId} status=${status} payment=${paymentId}`
+    );
+
+    return created.captainRegistrationId;
+  }
+
   private async createRegistrationRecord(
     context: {
       type: 'tournament' | 'league';
@@ -598,10 +774,19 @@ export class PaymentService {
       category_ids?: string;
       partner_id?: string;
       category_partners?: string;
+      team_name?: string;
+      team_members?: string;
     },
     paymentId: string
   ): Promise<string> {
     try {
+      if (context.type === 'league' && context.team_members) {
+        return await this.createLeagueTeamRegistrationFromContext(
+          context,
+          paymentId
+        );
+      }
+
       if (context.type === 'league') {
         // Create league registration
         const { data, error } = await supabase
