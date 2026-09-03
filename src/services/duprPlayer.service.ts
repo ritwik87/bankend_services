@@ -59,28 +59,46 @@ class DuprPlayerService {
         error: 'Player not found in DUPR database',
       };
     } catch (error: any) {
-      logger.error(
-        `Player validation failed for DUPR ID: ${validationRequest.duprId}`,
-        error
-      );
+      const status = error.response?.status ?? null;
 
-      if (error.response?.status === 404) {
+      // The full request/response is already logged by makeAuthenticatedRequest. Only the
+      // identifying detail is logged here — passing the raw AxiosError serialises megabytes
+      // of request, socket and agent state and buries the useful part.
+      logger.error('Player validation failed', {
+        duprId: validationRequest.duprId,
+        status,
+        body: error.response?.data ?? null,
+      });
+
+      if (status === 404) {
         return {
           isValid: false,
           error: 'Player not found in DUPR database',
         };
       }
 
-      if (error.response?.status === 401) {
+      if (status === 401) {
         return {
           isValid: false,
           error: 'Authentication failed with DUPR API',
         };
       }
 
+      if (status === 403) {
+        // Authenticated but not permitted — almost always an environment or scope mismatch,
+        // e.g. UAT credentials against prod.mydupr.com, or a client without user-read access.
+        return {
+          isValid: false,
+          error:
+            'DUPR rejected this request (403 Forbidden). Check that DUPR_API_BASE_URL, DUPR_CLIENT_KEY/SECRET and DUPR_CLUB_ID all belong to the same DUPR environment.',
+        };
+      }
+
       return {
         isValid: false,
-        error: 'Failed to validate player with DUPR API',
+        error: `Failed to validate player with DUPR API${
+          status ? ` (HTTP ${status})` : ''
+        }`,
       };
     }
   }
