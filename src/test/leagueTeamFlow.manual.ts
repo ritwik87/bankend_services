@@ -337,28 +337,24 @@ async function main() {
     console.log('  original dupr_id values restored');
 
     // -------------------------------------------------------- DUPR cap path
-    section('DUPR cap (fail-closed behaviour)');
+    section('No DUPR average rule');
 
+    // The average-DUPR cap was removed from the product. Even with the legacy column set,
+    // registration must not be gated on ratings, and unrated players must be accepted.
     await supabase.from('leagues').update({ max_avg_team_dupr: 4.0 }).eq('id', L);
-    // Three players untouched by every test above, so the only thing that can refuse this
-    // roster is the DUPR verification itself. Using already-registered players here would
-    // make the check pass for the wrong reason and prove nothing about the cap.
-    const capped = await leagueTeamService.validateLeagueTeamEligibility(L, [
+    const noCap = await leagueTeamService.validateLeagueTeamEligibility(L, [
       (pE as any).id,
       (pF as any).id,
       (pG as any).id,
     ]);
-    console.log(`  cap result: ok=${capped.ok} reason="${capped.reason}"`);
+    console.log(`  result: ok=${noCap.ok} reason="${noCap.reason ?? '-'}"`);
     check(
-      'the refusal is about DUPR, not an earlier rule',
-      /dupr|verify|rating/i.test(capped.reason || ''),
-      `reason was "${capped.reason}" — the cap path was never exercised`
+      'unrated players are accepted (no average rule)',
+      noCap.ok === true,
+      noCap.reason
     );
-    check(
-      'with a cap set, an unverifiable team is refused rather than allowed',
-      capped.ok === false,
-      'A pass here would mean ratings were skipped or defaulted'
-    );
+    check('no average is computed', noCap.avgDupr === null);
+    check('no cap is reported', noCap.cap === null);
     await supabase.from('leagues').update({ max_avg_team_dupr: null }).eq('id', L);
 
     // ------------------------------------------------------------ withdraw
