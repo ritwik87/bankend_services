@@ -11,6 +11,7 @@ import {
 } from '../types/payment.types';
 import logger from '../utils/logger';
 import Joi from 'joi';
+import { leagueTeamService } from '../services/leagueTeam.service';
 
 // Validation schemas
 const createOrderSchema = Joi.object({
@@ -27,7 +28,11 @@ const createOrderSchema = Joi.object({
     partner_id: Joi.string().optional(),
     category_partners: Joi.string().optional(),
     custom_field_values: Joi.string().optional(),
-    partner_custom_field_values: Joi.string().optional()
+    partner_custom_field_values: Joi.string().optional(),
+    // Team registration (league team mode). Absent from individual-league orders.
+    team_name: Joi.string().max(100).optional(),
+    team_members: Joi.string().optional(),
+    member_custom_field_values: Joi.string().optional()
   }).required(),
   entity_id: Joi.string().optional(),
 });
@@ -45,7 +50,11 @@ const verifyPaymentSchema = Joi.object({
     partner_id: Joi.string().optional(),
     category_partners: Joi.string().optional(),
     custom_field_values: Joi.string().optional(),
-    partner_custom_field_values: Joi.string().optional()
+    partner_custom_field_values: Joi.string().optional(),
+    // Team registration (league team mode). Absent from individual-league orders.
+    team_name: Joi.string().max(100).optional(),
+    team_members: Joi.string().optional(),
+    member_custom_field_values: Joi.string().optional()
   }).required()
 });
 
@@ -83,7 +92,11 @@ const createPaymentLinkSchema = Joi.object({
     partner_id: Joi.string().optional(),
     category_partners: Joi.string().optional(),
     custom_field_values: Joi.string().optional(),
-    partner_custom_field_values: Joi.string().optional()
+    partner_custom_field_values: Joi.string().optional(),
+    // Team registration (league team mode). Absent from individual-league orders.
+    team_name: Joi.string().max(100).optional(),
+    team_members: Joi.string().optional(),
+    member_custom_field_values: Joi.string().optional()
   }).required()
 });
 
@@ -154,6 +167,62 @@ export class PaymentController {
       }
 
       const orderData: CreateOrderRequest = value;
+
+      // League team registration: verify eligibility and the team name BEFORE creating the
+      // Razorpay order. The webhook creates registrations only after payment.captured, so if
+      // this check lived there alone an ineligible team would already have been charged.
+      const teamContext = orderData.context as any;
+      if (teamContext.type === 'league' && teamContext.team_members) {
+        let memberIds: string[] = [];
+        try {
+          memberIds = JSON.parse(teamContext.team_members);
+        } catch {
+          res
+            .status(400)
+            .json({ success: false, error: 'Invalid team member list' });
+          return;
+        }
+
+        if (!Array.isArray(memberIds) || memberIds.length === 0) {
+          res
+            .status(400)
+            .json({ success: false, error: 'Invalid team member list' });
+          return;
+        }
+
+        if (!memberIds.includes(teamContext.player_id)) {
+          res.status(400).json({
+            success: false,
+            error: 'The captain must be part of the team',
+          });
+          return;
+        }
+
+        const eligibility =
+          await leagueTeamService.validateLeagueTeamEligibility(
+            teamContext.id,
+            memberIds
+          );
+
+        if (!eligibility.ok) {
+          logger.info('Team order rejected before payment:', {
+            leagueId: teamContext.id,
+            reason: eligibility.reason,
+          });
+          res.status(400).json({ success: false, error: eligibility.reason });
+          return;
+        }
+
+        const nameCheck = await leagueTeamService.checkTeamNameAvailable(
+          teamContext.id,
+          teamContext.team_name || ''
+        );
+
+        if (!nameCheck.available) {
+          res.status(400).json({ success: false, error: nameCheck.reason });
+          return;
+        }
+      }
 
       // Log the order creation attempt (without sensitive data)
       logger.info('Creating payment order:', {

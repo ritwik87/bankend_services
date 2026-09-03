@@ -69,10 +69,19 @@ class DuprAuthService {
         created_at: Math.floor(Date.now() / 1000),
       };
 
-      logger.info('DUPR authentication token obtained successfully');
+      logger.info('DUPR authentication token obtained successfully', {
+        baseUrl: this.baseUrl,
+        status: response.status,
+      });
       return this.token!.result.token;
-    } catch (error) {
-      logger.error('Failed to obtain DUPR auth token', error);
+    } catch (error: any) {
+      logger.error('DUPR token request FAILED', {
+        url: `${this.baseUrl}/auth/${this.apiVersion}/token`,
+        status: error.response?.status ?? null,
+        statusText: error.response?.statusText ?? null,
+        body: error.response?.data ?? null,
+        message: error.message,
+      });
       throw new Error('DUPR authentication failed');
     }
   }
@@ -83,17 +92,44 @@ class DuprAuthService {
     data?: any
   ) {
     const token = await this.getAuthToken();
+    const fullUrl = `${this.baseUrl}${url}`;
 
-    return axios({
-      method,
-      url: `${this.baseUrl}${url}`,
-      data,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        accept: '*/*',
-      },
-    });
+    logger.info('DUPR request', { method, url: fullUrl });
+
+    try {
+      const response = await axios({
+        method,
+        url: fullUrl,
+        data,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          accept: '*/*',
+        },
+      });
+
+      logger.info('DUPR response', {
+        method,
+        url: fullUrl,
+        status: response.status,
+        body: response.data,
+      });
+
+      return response;
+    } catch (error: any) {
+      // Log only what identifies the failure. A raw AxiosError serialises to megabytes —
+      // it carries the whole request, socket and agent — which buries the useful part.
+      logger.error('DUPR request FAILED', {
+        method,
+        url: fullUrl,
+        status: error.response?.status ?? null,
+        statusText: error.response?.statusText ?? null,
+        body: error.response?.data ?? null,
+        code: error.code ?? null,
+        message: error.message,
+      });
+      throw error;
+    }
   }
 }
 
