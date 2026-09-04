@@ -92,7 +92,14 @@ export class LeagueTeamService {
    */
   async validateLeagueTeamEligibility(
     leagueId: string,
-    memberIds: string[]
+    memberIds: string[],
+    /**
+     * A team being edited. Its own registrations are ignored by the "already registered" check.
+     *
+     * Without this, swapping a player fails: the roster still contains that team's other
+     * members, who are legitimately registered — to this very team — so the check rejects them.
+     */
+    options?: { excludeTeamId?: string }
   ): Promise<TeamEligibilityResult> {
     const empty: TeamEligibilityResult = {
       ok: false,
@@ -131,9 +138,11 @@ export class LeagueTeamService {
     }
 
     // --- Already registered ----------------------------------------------------------
+    // One player registers once per league, so anyone already on another team — or registered
+    // individually — is refused.
     const { data: existing, error: existingError } = await supabase
       .from('league_registrations')
-      .select('player_id, profiles:player_id (name)')
+      .select('player_id, team_id, profiles:player_id (name)')
       .eq('league_id', leagueId)
       .in('player_id', uniqueIds);
 
@@ -142,8 +151,14 @@ export class LeagueTeamService {
       return { ...empty, cap, reason: 'Could not verify existing registrations' };
     }
 
-    if (existing && existing.length > 0) {
-      const names = existing
+    // Filtered in code rather than with .neq(): team_id is nullable, and in SQL
+    // `team_id <> '<id>'` drops NULL rows too, which would hide individual registrations.
+    const clashes = (existing || []).filter(
+      (r: any) => !options?.excludeTeamId || r.team_id !== options.excludeTeamId
+    );
+
+    if (clashes.length > 0) {
+      const names = clashes
         .map((r: any) => r.profiles?.name || r.player_id)
         .join(', ');
       return {
@@ -313,6 +328,12 @@ export class LeagueTeamService {
     paymentId?: string | null;
     avgDupr?: number | null;
     status?: 'confirmed' | 'pending';
+    /**
+     * Overrides the default, which is 'paid' when a payment id is present and 'pending'
+     * otherwise. Manual entry uses it to record money taken outside the app — cash, bank
+     * transfer, a comped place — none of which carry a Razorpay id.
+     */
+    paymentStatus?: 'paid' | 'pending' | 'failed' | 'refunded';
   }): Promise<{
     success: boolean;
     teamId?: string;
@@ -328,6 +349,7 @@ export class LeagueTeamService {
       paymentId = null,
       avgDupr = null,
       status = 'confirmed',
+      paymentStatus,
     } = params;
 
     if (!memberIds.includes(captainId)) {
@@ -394,7 +416,7 @@ export class LeagueTeamService {
           team_id: teamId,
           is_captain: playerId === captainId,
           status,
-          payment_status: paymentId ? 'paid' : 'pending',
+          payment_status: paymentStatus || (paymentId ? 'paid' : 'pending'),
           ...(paymentId ? { payment_id: paymentId } : {}),
           ...(categoryId ? { category_id: categoryId } : {}),
         }))
@@ -449,23 +471,9 @@ export class LeagueTeamService {
       return { success: false, error: 'Team not found' };
     }
 
-    const { count: playedCount, error: matchError } = await supabase
-      .from('matches')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'completed')
-      .or(`team1_id.eq.${teamId},team2_id.eq.${teamId}`);
-
-    if (matchError) {
-      logger.error('Could not check played matches:', matchError);
-      return { success: false, error: 'Could not check the team\'s matches' };
-    }
-
-    if ((playedCount ?? 0) > 0) {
-      return {
-        success: false,
-        error: 'This team has already played a match, so its players cannot be changed',
-      };
-    }
+    // Swapping is permitted in any situation, including after matches have been played.
+    // Results stay attached to the team rather than the individual, so a lineup change does
+    // not disturb points already recorded.
 
     // Current roster with the swap applied, re-validated as a whole.
     const { data: members, error: membersError } = await supabase
@@ -491,8 +499,25 @@ export class LeagueTeamService {
       .filter((id: string) => id !== outgoingPlayerId)
       .concat(incomingPlayerId);
 
-    // The outgoing player's own registration is about to be freed, so exclude it from the
-    // "already registered" check by removing it first inside the same flow.
+    // Validate BEFORE touching anything. This team's own registrations are expected — the
+    // roster still holds its other members — so they are excluded; only a clash with another
+    // team, or an individual entry, refuses the swap.
+    //
+    // An earlier version deleted the outgoing registration first and reinserted it on failure.
+    // Excluding the team makes that unnecessary, which removes a window where the player was
+    // briefly unregistered.
+    const eligibility = await this.validateLeagueTeamEligibility(
+      team.league_id,
+      newRoster,
+      { excludeTeamId: teamId }
+    );
+
+    if (!eligibility.ok) {
+      return { success: false, error: eligibility.reason };
+    }
+
+    // Nothing has changed yet, so from here the swap proceeds: free the outgoing registration,
+    // move the roster slot, then register the replacement.
     const { error: regDeleteError } = await supabase
       .from('league_registrations')
       .delete()
@@ -502,24 +527,6 @@ export class LeagueTeamService {
     if (regDeleteError) {
       logger.error('Failed to remove outgoing registration:', regDeleteError);
       return { success: false, error: 'Could not update the registration' };
-    }
-
-    const eligibility = await this.validateLeagueTeamEligibility(
-      team.league_id,
-      newRoster
-    );
-
-    if (!eligibility.ok) {
-      // Put the outgoing player's registration back — the swap is refused.
-      await supabase.from('league_registrations').insert({
-        league_id: team.league_id,
-        player_id: outgoingPlayerId,
-        team_id: teamId,
-        is_captain: outgoingPlayerId === team.captain_id,
-        status: 'confirmed',
-        payment_status: 'paid',
-      });
-      return { success: false, error: eligibility.reason };
     }
 
     // Swap the roster slot.
@@ -533,6 +540,10 @@ export class LeagueTeamService {
       return { success: false, error: 'Could not replace the player' };
     }
 
+    // Replacing the captain hands the role to whoever takes their place. Otherwise the team
+    // would be left with no captain flag and a captain_id pointing at someone off the team.
+    const replacingCaptain = team.captain_id === outgoingPlayerId;
+
     // New registration for the incoming player. Per-player custom field answers are not
     // carried over: they belonged to the outgoing player.
     const { error: newRegError } = await supabase
@@ -541,7 +552,7 @@ export class LeagueTeamService {
         league_id: team.league_id,
         player_id: incomingPlayerId,
         team_id: teamId,
-        is_captain: false,
+        is_captain: replacingCaptain,
         status: 'confirmed',
         payment_status: 'paid',
         ...(eligibility.categoryId ? { category_id: eligibility.categoryId } : {}),
@@ -554,8 +565,19 @@ export class LeagueTeamService {
 
     await supabase
       .from('league_teams')
-      .update({ avg_dupr_at_registration: eligibility.avgDupr })
+      .update({
+        avg_dupr_at_registration: eligibility.avgDupr,
+        ...(replacingCaptain ? { captain_id: incomingPlayerId } : {}),
+      })
       .eq('id', teamId);
+
+    if (replacingCaptain) {
+      await supabase
+        .from('league_team_members')
+        .update({ role: 'captain' })
+        .eq('team_id', teamId)
+        .eq('player_id', incomingPlayerId);
+    }
 
     logger.info(
       `Team ${teamId}: replaced ${outgoingPlayerId} with ${incomingPlayerId}`
