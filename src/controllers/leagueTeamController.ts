@@ -29,6 +29,20 @@ const validateTeamSchema = Joi.object({
 const registerTeamSchema = Joi.object({
   teamName: Joi.string().trim().min(1).max(100).required(),
   memberIds: Joi.array().items(Joi.string().uuid()).min(1).max(20).required(),
+  /**
+   * Manual entry only. An organizer or admin recording a payment taken outside the app —
+   * bank transfer, cash — supplies the reference here. Rejected for anyone else.
+   */
+  paymentId: Joi.string().trim().max(100).optional().allow(''),
+  /** Manual entry only: which member is the captain. Defaults to the first listed. */
+  captainId: Joi.string().uuid().optional(),
+  /**
+   * Manual entry only. Lets an organizer mark a team paid without a Razorpay id — cash, bank
+   * transfer, a comped place. Defaults to 'paid' when a payment id is given, else 'pending'.
+   */
+  paymentStatus: Joi.string()
+    .valid('paid', 'pending', 'failed', 'refunded')
+    .optional(),
 });
 
 const replaceMemberSchema = Joi.object({
@@ -259,8 +273,16 @@ export class LeagueTeamController {
   /**
    * POST /api/leagues/:leagueId/team-registration
    *
-   * The free path (no entry fee). Paid registrations are created by the Razorpay webhook
-   * instead — see payment.service.createRegistrationRecord.
+   * Serves two callers:
+   *
+   *   A captain registering their own team. Only a free league is allowed — a paid one must go
+   *   through Razorpay so the webhook creates the registration, otherwise a team could register
+   *   without paying.
+   *
+   *   An organizer or admin doing manual entry, recording a payment taken outside the app. They
+   *   may register a paid league and supply the reference, and need not be on the team.
+   *
+   * The rule is not lifted, it is scoped: authorization decides which caller you are.
    */
   async registerFreeTeam(
     req: AuthenticatedRequest,
@@ -268,9 +290,9 @@ export class LeagueTeamController {
   ): Promise<void> {
     try {
       const { leagueId } = req.params;
-      const captainId = req.user?.id;
+      const userId = req.user?.id;
 
-      if (!captainId) {
+      if (!userId) {
         res.status(401).json({ success: false, error: 'Authentication required' });
         return;
       }
@@ -287,10 +309,20 @@ export class LeagueTeamController {
         return;
       }
 
-      const { teamName, memberIds } = value;
+      const {
+        teamName,
+        memberIds,
+        paymentId,
+        captainId: requestedCaptain,
+        paymentStatus,
+      } = value;
 
-      // The caller must be registering their own team.
-      if (!memberIds.includes(captainId)) {
+      // Is this manual entry by someone who runs the league, or a captain registering?
+      const access = await assertLeagueAccess(req, leagueId);
+      const isManualEntry = access.ok;
+
+      // A captain must be on their own team. An organizer need not be.
+      if (!isManualEntry && !memberIds.includes(userId)) {
         res.status(403).json({
           success: false,
           error: 'You must be part of the team you are registering',
@@ -298,8 +330,20 @@ export class LeagueTeamController {
         return;
       }
 
-      // This endpoint is for free leagues only. A paid league must go through Razorpay so the
-      // webhook creates the registration — otherwise a team could register without paying.
+      // Manual entry names its own captain (defaulting to the first member); a captain
+      // registering is themselves.
+      const captainId = isManualEntry
+        ? requestedCaptain || memberIds[0]
+        : userId;
+
+      if (!memberIds.includes(captainId)) {
+        res.status(400).json({
+          success: false,
+          error: 'The captain must be one of the team members',
+        });
+        return;
+      }
+
       const { data: league, error: leagueError } = await supabase
         .from('leagues')
         .select('registration_fee')
@@ -311,13 +355,23 @@ export class LeagueTeamController {
         return;
       }
 
-      if (Number(league.registration_fee || 0) > 0) {
+      const isPaidLeague = Number(league.registration_fee || 0) > 0;
+
+      if (isPaidLeague && !isManualEntry) {
         res.status(400).json({
           success: false,
           error: 'This league has an entry fee — please register through payment',
         });
         return;
       }
+
+      // A payment reference is deliberately NOT required for manual entry, even on a paid
+      // league: organizers record cash, comped and bank-transfer entries that have no Razorpay
+      // id, and the dialog only accepts a reference it can verify with Razorpay. Requiring one
+      // would make those registrations impossible rather than merely untraceable.
+
+      // Only an organizer or admin may stamp a payment reference by hand.
+      const manualPaymentId = isManualEntry && paymentId ? paymentId : null;
 
       const eligibility = await leagueTeamService.validateLeagueTeamEligibility(
         leagueId,
@@ -345,9 +399,11 @@ export class LeagueTeamController {
         memberIds,
         captainId,
         categoryId: eligibility.categoryId,
-        paymentId: null,
+        paymentId: manualPaymentId,
         avgDupr: eligibility.avgDupr,
         status: 'confirmed',
+        // Honoured only for manual entry; a captain registering never sets this.
+        ...(isManualEntry && paymentStatus ? { paymentStatus } : {}),
       });
 
       if (!created.success) {
