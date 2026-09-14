@@ -31,6 +31,14 @@ export interface TeamEligibilityResult {
   reason?: string;
 }
 
+/**
+ * Asks Razorpay whether an order was paid. `paymentId` is null when it has no captured payment.
+ * Injected by the controller: this service cannot import paymentService, which imports it.
+ */
+export type CapturedPaymentLookup = (
+  orderId: string
+) => Promise<{ ok: boolean; paymentId: string | null; error?: string }>;
+
 export class LeagueTeamService {
 
   /**
@@ -682,14 +690,120 @@ export class LeagueTeamService {
   }
 
   /**
+   * Save a team's custom field answers from its stored order context.
+   *
+   * Two kinds of field, routed differently:
+   *   field_scope = 'team'       → written once, to the captain's registration row
+   *   field_scope = 'per_player' → written to that member's own registration row
+   *
+   * Without this split, a generic loop would write the captain's answers onto every member's
+   * row, since they all share a payment_id. Used by the webhook (rows found by payment id) and
+   * by retryTeamRegistration (rows found by team id), so a recovered team gets the same answers.
+   */
+  async saveTeamCustomFields(
+    context: any,
+    by: { paymentId?: string; teamId?: string }
+  ): Promise<void> {
+    let teamFieldValues: Record<string, string> = {};
+    let memberFieldValues: Record<string, Record<string, string>> = {};
+
+    try {
+      teamFieldValues = context.custom_field_values
+        ? JSON.parse(context.custom_field_values)
+        : {};
+      memberFieldValues = context.member_custom_field_values
+        ? JSON.parse(context.member_custom_field_values)
+        : {};
+    } catch (err) {
+      logger.error('Unparseable custom field values for team', err);
+      return;
+    }
+
+    const hasAny =
+      Object.keys(teamFieldValues).length > 0 ||
+      Object.keys(memberFieldValues).length > 0;
+    if (!hasAny) return;
+
+    if (!by.teamId && !by.paymentId) return;
+
+    let query = supabase
+      .from('league_registrations')
+      .select('id, player_id, is_captain');
+    query = by.teamId
+      ? query.eq('team_id', by.teamId)
+      : query.eq('payment_id', by.paymentId as string);
+
+    const { data: registrations, error } = await query;
+
+    if (error || !registrations || registrations.length === 0) {
+      logger.warn('No team registrations found for custom field save', by);
+      return;
+    }
+
+    const rows: any[] = [];
+
+    const captain = registrations.find((r: any) => r.is_captain);
+    if (captain) {
+      for (const [fieldId, value] of Object.entries(teamFieldValues)) {
+        if (typeof value === 'string' && value.trim()) {
+          rows.push({
+            registration_id: captain.id,
+            field_id: fieldId,
+            field_value: value,
+          });
+        }
+      }
+    }
+
+    for (const registration of registrations as any[]) {
+      const answers = memberFieldValues[registration.player_id];
+      if (!answers) continue;
+
+      for (const [fieldId, value] of Object.entries(answers)) {
+        if (typeof value === 'string' && value.trim()) {
+          rows.push({
+            registration_id: registration.id,
+            field_id: fieldId,
+            field_value: value,
+          });
+        }
+      }
+    }
+
+    if (rows.length === 0) return;
+
+    const { error: insertError } = await supabase
+      .from('league_registration_field_values')
+      .insert(rows);
+
+    if (insertError) {
+      logger.error('Failed to save team custom fields:', insertError);
+      return;
+    }
+
+    logger.info(
+      `Saved ${rows.length} team custom field values for ${
+        by.teamId ? `team ${by.teamId}` : `payment ${by.paymentId}`
+      }`
+    );
+  }
+
+  /**
    * Teams that paid but whose registration never got created.
    *
    * Reconstructed from `pending_order_contexts`, NOT from Razorpay notes. Notes cap at 256
    * characters per value, which a team name plus several player ids will not fit — the existing
    * fetchMissingRegistrations rebuilds identities from notes and would show teams incompletely.
    * The full context is stored at order creation precisely so this case is recoverable.
+   *
+   * A context row is written when checkout opens, paid or not, so each candidate is checked with
+   * Razorpay: an order with no captured payment is an abandoned checkout and is left out. One
+   * whose check fails is still listed, without a payment id — Retry checks again before acting.
    */
-  async findMissingTeamRegistrations(leagueId: string): Promise<{
+  async findMissingTeamRegistrations(
+    leagueId: string,
+    findCapturedPayment: CapturedPaymentLookup
+  ): Promise<{
     success: boolean;
     missing: any[];
     error?: string;
@@ -713,56 +827,69 @@ export class LeagueTeamService {
       return { success: true, missing: [] };
     }
 
-    const missing: any[] = [];
+    // In parallel, since each order may need a Razorpay round trip.
+    const results = await Promise.all(
+      (teamOrders as any[]).map(async (row) => {
+        let memberIds: string[] = [];
+        try {
+          memberIds = JSON.parse(row.context.team_members || '[]');
+        } catch {
+          memberIds = [];
+        }
 
-    for (const row of teamOrders as any[]) {
-      let memberIds: string[] = [];
-      try {
-        memberIds = JSON.parse(row.context.team_members || '[]');
-      } catch {
-        memberIds = [];
-      }
+        // Skip anything that did land — a registration already exists for these players.
+        const { data: existing } = await supabase
+          .from('league_registrations')
+          .select('id')
+          .eq('league_id', leagueId)
+          .in('player_id', memberIds.length > 0 ? memberIds : ['none'])
+          .limit(1);
 
-      // Skip anything that did land — a registration already exists for these players.
-      const { data: existing } = await supabase
-        .from('league_registrations')
-        .select('id')
-        .eq('league_id', leagueId)
-        .in('player_id', memberIds.length > 0 ? memberIds : ['none'])
-        .limit(1);
+        if (existing && existing.length > 0) return null;
 
-      if (existing && existing.length > 0) continue;
+        const payment = await findCapturedPayment(row.order_id);
+        if (payment.ok && !payment.paymentId) return null;
 
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, name, phone')
-        .in('id', memberIds.length > 0 ? memberIds : ['none']);
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, name, phone')
+          .in('id', memberIds.length > 0 ? memberIds : ['none']);
 
-      missing.push({
-        orderId: row.order_id,
-        status: row.status,
-        paymentId: row.payment_id,
-        createdAt: row.created_at,
-        teamName: row.context.team_name || null,
-        captainId: row.context.player_id || null,
-        members: (profiles || []).map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          phone: p.phone,
-        })),
-      });
-    }
+        return {
+          orderId: row.order_id,
+          status: row.status,
+          paymentId: payment.paymentId ?? row.payment_id ?? null,
+          createdAt: row.created_at,
+          teamName: row.context.team_name || null,
+          captainId: row.context.player_id || null,
+          members: (profiles || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            phone: p.phone,
+          })),
+        };
+      })
+    );
 
-    return { success: true, missing };
+    return { success: true, missing: results.filter((item) => item !== null) };
   }
 
   /**
    * Re-run team creation from a stored order context.
    *
+   * Only for an order Razorpay confirms was paid. The context row exists from the moment
+   * checkout opens, so without that check an abandoned checkout would register a team for free.
+   * The captured payment's id is recorded on the registrations, and the custom field answers in
+   * the context are saved exactly as the webhook would have saved them.
+   *
    * Safe to invoke twice: the unique index on (league_id, player_id) and the team-name index
    * make a duplicate impossible, and the context is marked processed on success.
    */
-  async retryTeamRegistration(orderId: string): Promise<{
+  async retryTeamRegistration(
+    orderId: string,
+    leagueId: string,
+    findCapturedPayment: CapturedPaymentLookup
+  ): Promise<{
     success: boolean;
     teamId?: string;
     error?: string;
@@ -777,11 +904,17 @@ export class LeagueTeamService {
       return { success: false, error: 'Order context not found' };
     }
 
+    const context: any = pending.context;
+
+    // The route authorizes the caller for leagueId, so the order has to belong to that league.
+    if (context?.id !== leagueId) {
+      return { success: false, error: 'This order belongs to a different league' };
+    }
+
     if (pending.status === 'processed') {
       return { success: false, error: 'This order has already been processed' };
     }
 
-    const context: any = pending.context;
     if (!context?.team_members) {
       return { success: false, error: 'This order is not a team registration' };
     }
@@ -792,6 +925,22 @@ export class LeagueTeamService {
     } catch {
       return { success: false, error: 'Stored team list is unreadable' };
     }
+
+    const payment = await findCapturedPayment(orderId);
+    if (!payment.ok) {
+      return {
+        success: false,
+        error: payment.error || 'Could not check the payment with Razorpay',
+      };
+    }
+    if (!payment.paymentId) {
+      return {
+        success: false,
+        error:
+          'Razorpay has no captured payment for this order — checkout was not completed, so there is no team to recover',
+      };
+    }
+    const paymentId = payment.paymentId;
 
     const eligibility = await this.validateLeagueTeamEligibility(
       context.id,
@@ -813,21 +962,29 @@ export class LeagueTeamService {
       memberIds,
       captainId: context.player_id,
       categoryId,
-      paymentId: pending.payment_id,
+      paymentId,
       avgDupr: eligibility.avgDupr,
       status,
     });
 
-    if (!created.success) {
+    if (!created.success || !created.teamId) {
       return { success: false, error: created.error };
     }
 
+    await this.saveTeamCustomFields(context, { teamId: created.teamId });
+
     await supabase
       .from('pending_order_contexts')
-      .update({ status: 'processed', processed_at: new Date().toISOString() })
+      .update({
+        status: 'processed',
+        processed_at: new Date().toISOString(),
+        payment_id: paymentId,
+      })
       .eq('order_id', orderId);
 
-    logger.info(`Retried team registration for order ${orderId} → team ${created.teamId}`);
+    logger.info(
+      `Retried team registration for order ${orderId} (payment ${paymentId}) → team ${created.teamId}`
+    );
     return { success: true, teamId: created.teamId };
   }
 }

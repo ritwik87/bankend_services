@@ -287,95 +287,14 @@ export class PaymentService {
   }
 
   /**
-   * Save custom field answers for a league team registration.
-   *
-   * Two kinds of field, routed differently:
-   *   field_scope = 'team'       → written once, to the captain's registration row
-   *   field_scope = 'per_player' → written to that member's own registration row
-   *
-   * Without this split, the generic loop would write the captain's answers onto every member's
-   * row, since they all share a payment_id.
+   * Save custom field answers for a league team registration. The routing by field scope lives
+   * in leagueTeamService so that retrying a failed team registration saves them identically.
    */
   private async saveLeagueTeamCustomFields(
     context: any,
     paymentId: string
   ): Promise<void> {
-    let teamFieldValues: Record<string, string> = {};
-    let memberFieldValues: Record<string, Record<string, string>> = {};
-
-    try {
-      teamFieldValues = context.custom_field_values
-        ? JSON.parse(context.custom_field_values)
-        : {};
-      memberFieldValues = context.member_custom_field_values
-        ? JSON.parse(context.member_custom_field_values)
-        : {};
-    } catch (err) {
-      logger.error('Webhook: unparseable custom field values for team', err);
-      return;
-    }
-
-    const hasAny =
-      Object.keys(teamFieldValues).length > 0 ||
-      Object.keys(memberFieldValues).length > 0;
-    if (!hasAny) return;
-
-    const { data: registrations, error } = await supabase
-      .from('league_registrations')
-      .select('id, player_id, is_captain')
-      .eq('payment_id', paymentId);
-
-    if (error || !registrations || registrations.length === 0) {
-      logger.warn('Webhook: no team registrations found for custom field save', {
-        paymentId,
-      });
-      return;
-    }
-
-    const rows: any[] = [];
-
-    const captain = registrations.find((r: any) => r.is_captain);
-    if (captain) {
-      for (const [fieldId, value] of Object.entries(teamFieldValues)) {
-        if (typeof value === 'string' && value.trim()) {
-          rows.push({
-            registration_id: captain.id,
-            field_id: fieldId,
-            field_value: value,
-          });
-        }
-      }
-    }
-
-    for (const registration of registrations as any[]) {
-      const answers = memberFieldValues[registration.player_id];
-      if (!answers) continue;
-
-      for (const [fieldId, value] of Object.entries(answers)) {
-        if (typeof value === 'string' && value.trim()) {
-          rows.push({
-            registration_id: registration.id,
-            field_id: fieldId,
-            field_value: value,
-          });
-        }
-      }
-    }
-
-    if (rows.length === 0) return;
-
-    const { error: insertError } = await supabase
-      .from('league_registration_field_values')
-      .insert(rows);
-
-    if (insertError) {
-      logger.error('Webhook: failed to save team custom fields:', insertError);
-      return;
-    }
-
-    logger.info(
-      `Webhook: saved ${rows.length} team custom field values for payment ${paymentId}`
-    );
+    await leagueTeamService.saveTeamCustomFields(context, { paymentId });
   }
 
   /**
@@ -458,6 +377,71 @@ export class PaymentService {
         await supabase.from(fieldValuesTable).insert(fieldValues);
         logger.info(`Webhook: saved ${fieldValues.length} custom fields for ${entityType} registration ${reg.id}`);
       }
+    }
+  }
+
+  /**
+   * Find the captured Razorpay payment for an order, using the event's own credentials.
+   *
+   * pending_order_contexts records a payment id only once the webhook succeeds, so an order the
+   * captain abandoned at checkout and one whose webhook failed look identical in the database.
+   * Razorpay is the only source that can tell them apart.
+   *
+   * Resolves `paymentId: null` when the order has no captured payment.
+   */
+  async findCapturedPaymentForOrder(
+    context: { type: 'tournament' | 'league'; id: string },
+    orderId: string
+  ): Promise<{ ok: boolean; paymentId: string | null; error?: string }> {
+    const credentials = await this.fetchCredentials(context);
+    if (!credentials) {
+      return {
+        ok: false,
+        paymentId: null,
+        error: 'Razorpay credentials not found',
+      };
+    }
+
+    try {
+      const auth = Buffer.from(
+        `${credentials.key}:${credentials.secret}`
+      ).toString('base64');
+
+      const response = await fetch(
+        `https://api.razorpay.com/v1/orders/${encodeURIComponent(orderId)}/payments`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        logger.error(
+          `Razorpay payment lookup failed for order ${orderId}: HTTP ${response.status}`
+        );
+        return {
+          ok: false,
+          paymentId: null,
+          error: 'Could not check the payment with Razorpay',
+        };
+      }
+
+      const body: any = await response.json();
+      const captured = (body?.items || []).find(
+        (payment: any) => payment.status === 'captured'
+      );
+
+      return { ok: true, paymentId: captured?.id ?? null };
+    } catch (error) {
+      logger.error(`Razorpay payment lookup failed for order ${orderId}:`, error);
+      return {
+        ok: false,
+        paymentId: null,
+        error: 'Could not check the payment with Razorpay',
+      };
     }
   }
 

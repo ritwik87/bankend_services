@@ -2,6 +2,7 @@ import { Response } from 'express';
 import Joi from 'joi';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { leagueTeamService } from '../services/leagueTeam.service';
+import { paymentService } from '../services/payment.service';
 import { userService } from '../services/user.service';
 import { supabase } from '../utils/supabase';
 import logger from '../utils/logger';
@@ -580,7 +581,12 @@ export class LeagueTeamController {
       }
 
       const result = await leagueTeamService.findMissingTeamRegistrations(
-        leagueId
+        leagueId,
+        (orderId) =>
+          paymentService.findCapturedPaymentForOrder(
+            { type: 'league', id: leagueId },
+            orderId
+          )
       );
       res.status(result.success ? 200 : 500).json(result);
     } catch (error) {
@@ -613,7 +619,15 @@ export class LeagueTeamController {
         return;
       }
 
-      const result = await leagueTeamService.retryTeamRegistration(orderId);
+      const result = await leagueTeamService.retryTeamRegistration(
+        orderId,
+        leagueId,
+        (id) =>
+          paymentService.findCapturedPaymentForOrder(
+            { type: 'league', id: leagueId },
+            id
+          )
+      );
       if (!result.success) {
         res.status(400).json({ success: false, error: result.error });
         return;
