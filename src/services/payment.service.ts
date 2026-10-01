@@ -17,6 +17,7 @@ import logger from '../utils/logger';
 import { whatsappService } from './whatsapp.service';
 import { supabase } from '../utils/supabase';
 import { leagueTeamService } from './leagueTeam.service';
+import { leaguePlayerCategoryService } from './leaguePlayerCategory.service';
 
 export class PaymentService {
   /**
@@ -263,6 +264,11 @@ export class PaymentService {
 
       // 7. Save custom fields (tournament + league)
       await this.saveCustomFieldsFromContext(context, paymentId, entityType);
+
+      // Individual leagues: derive the player category from gender + DUPR rating (never throws)
+      if (entityType === 'league' && !context.team_members && context.player_id) {
+        await leaguePlayerCategoryService.assignForPlayer(context.id, context.player_id);
+      }
 
       // 8. Mark as processed and persist payment_id + event_id for future idempotency checks
       await supabase
