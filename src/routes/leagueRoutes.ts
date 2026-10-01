@@ -1,6 +1,7 @@
 import express from 'express';
 import { leagueTeamController } from '../controllers/leagueTeamController';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import { leaguePlayerCategoryService } from '../services/leaguePlayerCategory.service';
 import { createRateLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
@@ -13,6 +14,24 @@ router.use(requireAuth);
  * read-only routes. A captain filling a team of 5 makes at most 4 calls.
  */
 const resolvePlayerLimiter = createRateLimiter(15 * 60 * 1000, 30);
+
+/**
+ * POST /api/leagues/:leagueId/assign-my-category
+ * Free individual registrations are created by the browser, which cannot write
+ * league_player_categories (RLS) — so the player's own category is derived here.
+ */
+router.post(
+  '/:leagueId/assign-my-category',
+  async (req: AuthenticatedRequest, res) => {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const result = await leaguePlayerCategoryService.assignForPlayer(
+      req.params.leagueId,
+      userId
+    );
+    return res.json({ success: true, ...result });
+  }
+);
 
 /** GET /api/leagues/:leagueId/team-name-available?name=... */
 router.get(
