@@ -6,6 +6,7 @@ import userRoutes from './userRoutes';
 import auctionRoutes from './auctionRoutes';
 import aiChatRoutes from './aiChatRoutes';
 import leagueRoutes from './leagueRoutes';
+import leagueGuestRoutes from './leagueGuestRoutes';
 
 const router = Router();
 
@@ -23,6 +24,9 @@ router.use('/user', userRoutes);
 
 // Mount Auction routes
 router.use('/auction', auctionRoutes);
+
+// Public phone + human-check league registration — must come BEFORE the authenticated league router
+router.use('/leagues/guest', leagueGuestRoutes);
 
 // Mount League team registration routes
 router.use('/leagues', leagueRoutes);
