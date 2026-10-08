@@ -105,7 +105,7 @@ export class OtpController {
       if (result.success) {
         res.status(200).json(result);
       } else {
-        res.status(400).json(result);
+        res.status(result.rateLimited ? 429 : 400).json(result);
       }
     } catch (error) {
       logger.error('Error in generateOtp controller:', error);

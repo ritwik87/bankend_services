@@ -12,6 +12,9 @@ import logger from './utils/logger';
 
 const app = express();
 
+// Behind Vercel's proxy: use the real client IP (required for per-IP rate limiting)
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 

@@ -22,4 +22,8 @@ export const duprApiLimiter = createRateLimiter(
 
 export const strictLimiter = createRateLimiter(60 * 1000, 10); // 10 requests per minute
 
+// OTP endpoints (per IP): sending is capped tightly, verification limited to slow brute-forcing
+export const otpGenerateLimiter = createRateLimiter(15 * 60 * 1000, 10); // 10 per 15 minutes
+export const otpVerifyLimiter = createRateLimiter(15 * 60 * 1000, 30); // 30 per 15 minutes
+
 export const aiChatLimiter = createRateLimiter(15 * 60 * 1000, 30); // 30 requests per 15 minutes
