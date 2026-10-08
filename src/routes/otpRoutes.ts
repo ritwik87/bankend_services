@@ -1,5 +1,6 @@
 import express from 'express';
 import { otpController } from '../controllers/otpController';
+import { otpGenerateLimiter, otpVerifyLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
@@ -157,7 +158,7 @@ const router = express.Router();
  *       500:
  *         description: Internal server error
  */
-router.post('/generate', otpController.generateOtp.bind(otpController));
+router.post('/generate', otpGenerateLimiter, otpController.generateOtp.bind(otpController));
 
 /**
  * @swagger
@@ -187,7 +188,7 @@ router.post('/generate', otpController.generateOtp.bind(otpController));
  *       500:
  *         description: Internal server error
  */
-router.post('/verify', otpController.verifyOtp.bind(otpController));
+router.post('/verify', otpVerifyLimiter, otpController.verifyOtp.bind(otpController));
 
 /**
  * @swagger
@@ -330,7 +331,7 @@ router.post('/validate-partner', otpController.validatePartner.bind(otpControlle
  *       500:
  *         description: Internal server error
  */
-router.post('/verify-partner', otpController.verifyPartnerOtp.bind(otpController));
+router.post('/verify-partner', otpVerifyLimiter, otpController.verifyPartnerOtp.bind(otpController));
 
 /**
  * @swagger

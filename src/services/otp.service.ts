@@ -29,6 +29,8 @@ const getDummyUser = (phone: string) => {
   return DUMMY_USERS[mobile as keyof typeof DUMMY_USERS] || null;
 };
 
+const MAX_OTPS_PER_DAY = parseInt(process.env.OTP_MAX_PER_DAY || '5', 10);
+
 class OtpService {
   /**
    * Generate and send OTP via WhatsApp
@@ -41,6 +43,38 @@ class OtpService {
       const dummyUser = getDummyUser(phone);
       let otp: string;
       let shouldSendOtp = true;
+
+      // Daily limit per phone (rolling 24h). Dummy users use a static OTP and are exempt.
+      if (!dummyUser) {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count, error: countError } = await supabase
+          .from('otp_send_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('phone', phone)
+          .gte('created_at', since);
+
+        if (countError) {
+          logger.error('Error checking OTP daily limit:', countError);
+          return {
+            success: false,
+            message: 'Failed to generate OTP',
+            userExists: false,
+            error: 'Failed to generate OTP',
+          };
+        }
+
+        if ((count ?? 0) >= MAX_OTPS_PER_DAY) {
+          logger.warn(`OTP daily limit reached for phone: ${phone.replace(/(.{3})(.*)(.{2})/, '$1***$3')}`);
+          const message = `Daily OTP limit of ${MAX_OTPS_PER_DAY} reached. Please try again after 24 hours.`;
+          return {
+            success: false,
+            message,
+            userExists: false,
+            error: message,
+            rateLimited: true,
+          };
+        }
+      }
 
       if (dummyUser) {
         // Use static OTP for dummy users
@@ -247,6 +281,13 @@ class OtpService {
             userExists: !!existingProfile,
             error: whatsappResult.message || 'Failed to send OTP via WhatsApp',
           };
+        }
+
+        const { error: logError } = await supabase
+          .from('otp_send_log')
+          .insert({ phone });
+        if (logError) {
+          logger.error('Error logging OTP send:', logError);
         }
       } else {
         logger.info(`Skipping WhatsApp OTP for dummy user: ${phone}`);

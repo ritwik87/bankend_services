@@ -9,6 +9,7 @@ export interface GenerateOtpResponse {
   message: string;
   userExists: boolean;
   error?: string;
+  rateLimited?: boolean;
 }
 
 export interface VerifyOtpRequest {
