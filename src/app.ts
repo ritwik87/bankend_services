@@ -27,7 +27,7 @@ const corsOptions = {
   ) => callback(null, !origin || isOriginAllowed(origin)),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Turnstile-Token'],
   optionsSuccessStatus: 200,
 };
 
