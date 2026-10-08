@@ -31,11 +31,16 @@ const getDummyUser = (phone: string) => {
 
 const MAX_OTPS_PER_DAY = parseInt(process.env.OTP_MAX_PER_DAY || '5', 10);
 
+const OTP_COOLDOWN_SECONDS = parseInt(process.env.OTP_COOLDOWN_SECONDS || '60', 10);
+
 class OtpService {
   /**
    * Generate and send OTP via WhatsApp
    */
-  async generateOtp(request: GenerateOtpRequest): Promise<GenerateOtpResponse> {
+  async generateOtp(
+    request: GenerateOtpRequest,
+    meta: { ip?: string; userAgent?: string; origin?: string } = {}
+  ): Promise<GenerateOtpResponse> {
     try {
       const { phone } = request;
 
@@ -47,11 +52,13 @@ class OtpService {
       // Daily limit per phone (rolling 24h). Dummy users use a static OTP and are exempt.
       if (!dummyUser) {
         const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { count, error: countError } = await supabase
+        const { data: recentSends, error: countError } = await supabase
           .from('otp_send_log')
-          .select('id', { count: 'exact', head: true })
+          .select('created_at')
           .eq('phone', phone)
-          .gte('created_at', since);
+          .gte('created_at', since)
+          .order('created_at', { ascending: false });
+        const count = recentSends?.length ?? 0;
 
         if (countError) {
           logger.error('Error checking OTP daily limit:', countError);
@@ -63,15 +70,37 @@ class OtpService {
           };
         }
 
-        if ((count ?? 0) >= MAX_OTPS_PER_DAY) {
+        // Cooldown: one OTP per phone every OTP_COOLDOWN_SECONDS
+        if (recentSends && recentSends.length > 0) {
+          const elapsed = (Date.now() - new Date(recentSends[0].created_at).getTime()) / 1000;
+          const wait = Math.ceil(OTP_COOLDOWN_SECONDS - elapsed);
+          if (wait > 0) {
+            const message = `Please wait ${wait} second${wait === 1 ? '' : 's'} before requesting another OTP.`;
+            return {
+              success: false,
+              message,
+              userExists: false,
+              error: message,
+              rateLimited: true,
+              retryAfterSeconds: wait,
+            };
+          }
+        }
+
+        if (count >= MAX_OTPS_PER_DAY) {
           logger.warn(`OTP daily limit reached for phone: ${phone.replace(/(.{3})(.*)(.{2})/, '$1***$3')}`);
-          const message = `Daily OTP limit of ${MAX_OTPS_PER_DAY} reached. Please try again after 24 hours.`;
+          // The oldest send inside the window is the one that frees a slot first
+          const oldest = new Date(recentSends![MAX_OTPS_PER_DAY - 1].created_at).getTime();
+          const retryAfterSeconds = Math.max(1, Math.ceil((oldest + 24 * 60 * 60 * 1000 - Date.now()) / 1000));
+          const hours = Math.ceil(retryAfterSeconds / 3600);
+          const message = `Daily OTP limit of ${MAX_OTPS_PER_DAY} reached. Please try again in about ${hours} hour${hours === 1 ? '' : 's'}.`;
           return {
             success: false,
             message,
             userExists: false,
             error: message,
             rateLimited: true,
+            retryAfterSeconds,
           };
         }
       }
@@ -285,7 +314,12 @@ class OtpService {
 
         const { error: logError } = await supabase
           .from('otp_send_log')
-          .insert({ phone });
+          .insert({
+            phone,
+            ip: meta.ip,
+            user_agent: meta.userAgent?.slice(0, 500),
+            origin: meta.origin?.slice(0, 500),
+          });
         if (logError) {
           logger.error('Error logging OTP send:', logError);
         }
