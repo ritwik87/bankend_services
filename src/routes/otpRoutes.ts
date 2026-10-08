@@ -1,5 +1,6 @@
 import express from 'express';
 import { otpController } from '../controllers/otpController';
+import { otpAbuseGuard } from '../middleware/otpGuard';
 import { otpGenerateLimiter, otpVerifyLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
@@ -158,7 +159,7 @@ const router = express.Router();
  *       500:
  *         description: Internal server error
  */
-router.post('/generate', otpGenerateLimiter, otpController.generateOtp.bind(otpController));
+router.post('/generate', otpGenerateLimiter, otpAbuseGuard, otpController.generateOtp.bind(otpController));
 
 /**
  * @swagger

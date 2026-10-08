@@ -6,6 +6,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { enforceOrigin, isOriginAllowed } from './middleware/originAllowlist';
 import routes from './routes';
 import swaggerRoutes from './swagger/swagger.routes';
 import logger from './utils/logger';
@@ -18,9 +19,12 @@ app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 
-// CORS configuration - Development mode (allow all localhost origins)
+// CORS: only the origins in ALLOWED_ORIGINS (all origins when it is unset)
 const corsOptions = {
-  origin: true, // Allow all origins in development
+  origin: (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) => callback(null, !origin || isOriginAllowed(origin)),
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -28,6 +32,9 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Reject browser requests from origins that are not allowed (CORS alone only hides responses)
+app.use(enforceOrigin);
 
 // Razorpay webhook needs raw body for HMAC signature verification.
 // Must be registered BEFORE express.json() so body-parser doesn't consume the stream first.
