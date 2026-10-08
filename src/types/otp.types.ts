@@ -10,6 +10,7 @@ export interface GenerateOtpResponse {
   userExists: boolean;
   error?: string;
   rateLimited?: boolean;
+  retryAfterSeconds?: number;
 }
 
 export interface VerifyOtpRequest {

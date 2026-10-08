@@ -100,11 +100,18 @@ export class OtpController {
         phone: requestData.phone.replace(/(.{3})(.*)(.{2})/, '$1***$3'),
       });
 
-      const result = await otpService.generateOtp(requestData);
+      const result = await otpService.generateOtp(requestData, {
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+        origin: req.get('origin') || req.get('referer'),
+      });
 
       if (result.success) {
         res.status(200).json(result);
       } else {
+        if (result.retryAfterSeconds) {
+          res.set('Retry-After', String(result.retryAfterSeconds));
+        }
         res.status(result.rateLimited ? 429 : 400).json(result);
       }
     } catch (error) {
