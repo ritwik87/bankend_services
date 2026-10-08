@@ -1,7 +1,6 @@
 import express from 'express';
 import { otpController } from '../controllers/otpController';
 import { otpGenerateLimiter, otpVerifyLimiter } from '../middleware/rateLimiter';
-import { verifyTurnstile } from '../middleware/turnstile';
 
 const router = express.Router();
 
@@ -159,11 +158,7 @@ const router = express.Router();
  *       500:
  *         description: Internal server error
  */
-<<<<<<< HEAD
-router.post('/generate', otpGenerateLimiter, otpAbuseGuard, verifyTurnstile, otpController.generateOtp.bind(otpController));
-=======
 router.post('/generate', otpGenerateLimiter, otpController.generateOtp.bind(otpController));
->>>>>>> parent of e121d49 (added allow orgin)
 
 /**
  * @swagger
