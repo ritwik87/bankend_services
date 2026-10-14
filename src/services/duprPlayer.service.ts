@@ -85,12 +85,15 @@ class DuprPlayerService {
       }
 
       if (status === 403) {
-        // Authenticated but not permitted — almost always an environment or scope mismatch,
-        // e.g. UAT credentials against prod.mydupr.com, or a client without user-read access.
+        // Authenticated but not permitted. If other DUPR IDs validate fine with the same
+        // credentials, this is per-player (e.g. the player is not a member of our club or has
+        // not granted consent via the DUPR SSO flow). If every ID fails, it is an environment/scope mismatch.
+        const detail = error.response?.data?.message;
         return {
           isValid: false,
-          error:
-            'DUPR rejected this request (403 Forbidden). Check that DUPR_API_BASE_URL, DUPR_CLIENT_KEY/SECRET and DUPR_CLUB_ID all belong to the same DUPR environment.',
+          error: `DUPR denied access to this player (403 Forbidden)${
+            detail ? `: ${detail}` : ''
+          }. If the message mentions consent, the player must first complete the DUPR SSO connection flow. If every DUPR ID fails, check that DUPR_API_BASE_URL, DUPR_CLIENT_KEY/SECRET and DUPR_CLUB_ID belong to the same DUPR environment.`,
         };
       }
 
