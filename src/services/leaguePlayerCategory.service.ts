@@ -5,7 +5,7 @@ export type LeaguePlayerCategory = 'pro' | 'advanced' | 'intermediate';
 
 /**
  * Map a gender + DUPR rating to a league player category.
- *   Men:   Pro 4.7+, Advanced 4.2–4.7, Intermediate below 4.2
+ *   Men:   Pro 4.7+, Advanced 4.0–4.7, Intermediate below 4.0
  *   Women: Advanced 4.0+, Intermediate below 4.0
  * Returns null when gender is not male/female — the organizer assigns those by hand.
  */
@@ -16,7 +16,7 @@ export function categoryFromRating(
   const g = String(gender ?? '').trim().toLowerCase();
   if (g === 'male') {
     if (rating >= 4.7) return 'pro';
-    if (rating >= 4.2) return 'advanced';
+    if (rating >= 4.0) return 'advanced';
     return 'intermediate';
   }
   if (g === 'female') {
@@ -24,6 +24,13 @@ export function categoryFromRating(
   }
   return null;
 }
+
+/** Default auction base price (₹) per category — the organizer can still change it by hand. */
+export const CATEGORY_BASE_PRICES: Record<LeaguePlayerCategory, number> = {
+  pro: 1000000,
+  advanced: 500000,
+  intermediate: 200000,
+};
 
 /** The higher of singles / doubles, or null when neither is a usable number. */
 function bestRating(...values: unknown[]): number | null {
@@ -109,7 +116,12 @@ class LeaguePlayerCategoryService {
       const { error } = await supabase
         .from('league_player_categories')
         .upsert(
-          { league_id: leagueId, player_id: playerId, category, base_price: 0 },
+          {
+            league_id: leagueId,
+            player_id: playerId,
+            category,
+            base_price: CATEGORY_BASE_PRICES[category],
+          },
           { onConflict: 'league_id,player_id', ignoreDuplicates: true }
         );
       if (error) throw error;
