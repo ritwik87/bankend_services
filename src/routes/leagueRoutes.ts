@@ -1,6 +1,10 @@
 import express from 'express';
 import { leagueTeamController } from '../controllers/leagueTeamController';
-import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
+import {
+  requireAuth,
+  requireAdminOrOrganizer,
+  AuthenticatedRequest,
+} from '../middleware/auth';
 import { leaguePlayerCategoryService } from '../services/leaguePlayerCategory.service';
 import { createRateLimiter } from '../middleware/rateLimiter';
 
@@ -28,6 +32,27 @@ router.post(
     const result = await leaguePlayerCategoryService.assignForPlayer(
       req.params.leagueId,
       userId
+    );
+    return res.json({ success: true, ...result });
+  }
+);
+
+/**
+ * POST /api/leagues/:leagueId/assign-category  { playerId }
+ * Admin/organizer manual registrations bypass both the webhook and the player's own free flow,
+ * so the manual registration dialog calls this to derive the registered player's category.
+ */
+router.post(
+  '/:leagueId/assign-category',
+  requireAdminOrOrganizer,
+  async (req: AuthenticatedRequest, res) => {
+    const playerId = req.body?.playerId;
+    if (!playerId || typeof playerId !== 'string') {
+      return res.status(400).json({ success: false, error: 'playerId is required' });
+    }
+    const result = await leaguePlayerCategoryService.assignForPlayer(
+      req.params.leagueId,
+      playerId
     );
     return res.json({ success: true, ...result });
   }
