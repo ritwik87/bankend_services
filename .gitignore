@@ -5,6 +5,10 @@ yarn-debug.log*
 yarn-error.log*
 
 # Environment variables
+.env
+.env.local
+.env.production
+.env.test
 
 # Build output
 dist/
@@ -43,8 +47,11 @@ jspm_packages/
 .yarn-integrity
 
 # dotenv environment variables file
+.env
 
 # IDE - Keep VS Code config for team, exclude user-specific settings
+.vscode/settings.json.user
+.vscode/launch.json.user
 .idea/
 *.swp
 *.swo
@@ -58,4 +65,3 @@ jspm_packages/
 .Trashes
 ehthumbs.db
 Thumbs.db
-config.bat
