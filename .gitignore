@@ -49,9 +49,7 @@ jspm_packages/
 # dotenv environment variables file
 .env
 
-# IDE - Keep VS Code config for team, exclude user-specific settings
-.vscode/settings.json.user
-.vscode/launch.json.user
+# IDE
 .idea/
 *.swp
 *.swo
@@ -66,3 +64,4 @@ jspm_packages/
 ehthumbs.db
 Thumbs.db
 .vscode/
+*.code-workspace
